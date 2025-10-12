@@ -37,9 +37,15 @@ Dupe [matching is fuzzy](https://github.com/actualbudget/actual/blob/cde81da72c2
 
 Review matches in the Import modal, and click the left icon on the row to toggle between ignore, update, and add.
 
-If you uncheck `Merge with existing transactions` the matching won't happen, but you'll end up duplicates if you are importing transactions that already exist.
+If you uncheck `Merge with existing transactions` the matching won't happen with existing transactions but it will still happen amongst the import set with no ability to override this. You may end up duplicates if you are importing transactions that already exist.
 
 `Clear transactions on import` will set the `clear` checkbox on the imported transaction.
+
+### Recommended process
+
+1. Delete any existing transactions for the day being imported.
+1. Check `Merge with existing transactions` - this will allow you to override de-dupes within the import set
+1. Find updates and greyed out already imported transactions in the import set and change them to `+`
 
 ## Transfers
 
