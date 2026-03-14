@@ -171,7 +171,7 @@ def _format_date_range(start: date | None, end: date | None) -> str:
         parts.append(end.strftime("%b %Y"))
     else:
         parts.append("present")
-    return " – ".join(parts)
+    return " - ".join(parts)
 
 
 def _group_key(t: Transactions, group_by: str) -> str:
@@ -602,6 +602,7 @@ def report(name: str, *, mode: str | None = None, tsv: bool = False, rtf: bool =
             lines = _render_total_mode(txns, group_by, descending, rpt, start, end)
 
         if rtf:
+            Console().print(Markdown("\n".join(lines)))
             _copy_rtf(_to_html(lines))
             print("Copied to clipboard.")
         elif tsv:
