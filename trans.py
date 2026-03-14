@@ -1,3 +1,4 @@
+import json
 import os
 from collections import defaultdict
 from contextlib import contextmanager
@@ -133,24 +134,26 @@ def _month_start(d: date, offset: int) -> date:
 
 
 def _resolve_date_range(rpt: CustomReports) -> tuple[date | None, date | None]:
+    """Returns (start, end) as inclusive dates."""
     if rpt.date_static and rpt.start_date:
         return date.fromisoformat(rpt.start_date), (
             date.fromisoformat(rpt.end_date) if rpt.end_date else None
         )
     today = date.today()
     first = today.replace(day=1)
+    last_of_prev = first - timedelta(days=1)
     match rpt.date_range:
         case "thisMonth":
             return first, None
         case "lastMonth":
-            return _month_start(today, -1), first
+            return _month_start(today, -1), last_of_prev
         case s if s and s.startswith("last") and s.endswith("Months"):
             n = int(s.removeprefix("last").removesuffix("Months"))
-            return _month_start(today, -n), first
+            return _month_start(today, -n), last_of_prev
         case "yearToDate":
             return date(today.year, 1, 1), None
         case "lastYear":
-            return date(today.year - 1, 1, 1), date(today.year, 1, 1)
+            return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
         case _:
             return None, None
 
@@ -162,7 +165,7 @@ def _format_date_range(start: date | None, end: date | None) -> str:
     if start:
         parts.append(start.strftime("%b %Y"))
     if end:
-        parts.append((end - timedelta(days=1)).strftime("%b %Y"))
+        parts.append(end.strftime("%b %Y"))
     else:
         parts.append("present")
     return " – ".join(parts)
@@ -199,7 +202,7 @@ def report(name: str):
         txns = get_transactions(
             s,
             start_date=start,
-            end_date=end,
+            end_date=end + timedelta(days=1) if end else None,
             off_budget=None if rpt.show_offbudget else False,
         )
 
@@ -207,6 +210,11 @@ def report(name: str):
             txns = [t for t in txns if t.get_amount() < 0]
         elif rpt.balance_type == "Income":
             txns = [t for t in txns if t.get_amount() > 0]
+
+        if rpt.selected_categories:
+            raw = json.loads(rpt.selected_categories)
+            cat_ids = {(c["id"] if isinstance(c, dict) else c) for c in raw}
+            txns = [t for t in txns if t.category_id in cat_ids]
 
         if not rpt.show_hidden:
             txns = [t for t in txns if not t.category or not t.category.hidden]
