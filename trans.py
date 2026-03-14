@@ -552,12 +552,12 @@ def _copy_rtf(html: str) -> None:
 
 
 @app.command
-def report(name: str, *, mode: str | None = None, tsv: bool = False, rtf: bool = False):
+def report(name: str, *, mode: str | None = None, tsv: bool = False, pbcopy: bool = False):
     """Render a custom report by name as a markdown table.
 
     Use --mode to override the report's display mode ("total" or "time").
     Use --tsv for tab-separated output that pastes into Google Sheets.
-    Use --rtf to copy a formatted table to the clipboard (macOS).
+    Use --pbcopy to copy a formatted table to the macOS clipboard.
     """
     with open_actual() as actual:
         s = actual.session
@@ -601,7 +601,7 @@ def report(name: str, *, mode: str | None = None, tsv: bool = False, rtf: bool =
         else:
             lines = _render_total_mode(txns, group_by, descending, rpt, start, end)
 
-        if rtf:
+        if pbcopy:
             Console().print(Markdown("\n".join(lines)))
             _copy_rtf(_to_html(lines))
             print("Copied to clipboard.")
