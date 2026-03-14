@@ -265,38 +265,65 @@ def _render_total_mode(
     end: date | None,
 ) -> list[str]:
     lines = _report_header(rpt, start, end)
+    num_months = len(_month_columns(start, end)) or 1
 
     if group_by == "Category":
-        lines += _render_total_by_category(txns, rpt)
+        lines += _render_total_by_category(txns, rpt, num_months)
     else:
-        lines += _render_total_flat(txns, group_by, descending, rpt)
+        lines += _render_total_flat(txns, group_by, descending, rpt, num_months)
 
     return lines
 
 
+def _total_row(label: str, dep: Decimal, pay: Decimal, num_months: int, bold: bool = False) -> str:
+    total = dep + pay
+    avg = total / num_months
+    if bold:
+        return (
+            f"| **{label}** | **{dep:,.2f}** | **{pay:,.2f}** "
+            f"| **{total:,.2f}** | **{avg:,.2f}** |"
+        )
+    return f"| {label} | {dep:,.2f} | {pay:,.2f} | {total:,.2f} | {avg:,.2f} |"
+
+
+_TOTAL_HEADER = "| {col} | Deposits | Payments | Totals | Average |"
+_TOTAL_SEP = "|---|---:|---:|---:|---:|"
+
+
 def _render_total_flat(
-    txns: Sequence[Transactions], group_by: str, descending: bool, rpt: CustomReports,
+    txns: Sequence[Transactions],
+    group_by: str,
+    descending: bool,
+    rpt: CustomReports,
+    num_months: int,
 ) -> list[str]:
-    groups: dict[str, Decimal] = defaultdict(Decimal)
+    groups: dict[str, list[Decimal]] = {}
     for t in txns:
-        groups[_group_key(t, group_by)] += t.get_amount()
+        key = _group_key(t, group_by)
+        if key not in groups:
+            groups[key] = [Decimal(0), Decimal(0)]
+        amt = t.get_amount()
+        groups[key][0 if amt > 0 else 1] += amt
 
     if not rpt.show_empty:
-        groups = {k: v for k, v in groups.items() if v != 0}
+        groups = {k: v for k, v in groups.items() if v[0] + v[1] != 0}
 
-    sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=descending)
+    sorted_groups = sorted(
+        groups.items(), key=lambda x: x[1][0] + x[1][1], reverse=descending,
+    )
 
-    lines = [f"| {group_by} | Amount |", "|---|---:|"]
-    total = Decimal(0)
-    for key, amount in sorted_groups:
-        total += amount
-        lines.append(f"| {key} | {amount:,.2f} |")
-    lines.append(f"| **Total** | **{total:,.2f}** |")
+    lines = [_TOTAL_HEADER.format(col=group_by), _TOTAL_SEP]
+    grand_dep = grand_pay = Decimal(0)
+    for key, (dep, pay) in sorted_groups:
+        grand_dep += dep
+        grand_pay += pay
+        lines.append(_total_row(key, dep, pay, num_months))
+    lines.append(_total_row("Totals", grand_dep, grand_pay, num_months, bold=True))
     return lines
 
 
 def _render_total_by_category(
-    txns: Sequence[Transactions], rpt: CustomReports,
+    txns: Sequence[Transactions], rpt: CustomReports, num_months: int,
 ) -> list[str]:
     cat_groups: dict[str, dict] = {}
     for t in txns:
@@ -305,22 +332,26 @@ def _render_total_by_category(
             cat_groups[gname] = {"sort": gsort, "cats": {}}
         cats = cat_groups[gname]["cats"]
         if cname not in cats:
-            cats[cname] = {"sort": csort, "amount": Decimal(0)}
-        cats[cname]["amount"] += t.get_amount()
+            cats[cname] = {"sort": csort, "dep": Decimal(0), "pay": Decimal(0)}
+        amt = t.get_amount()
+        cats[cname]["dep" if amt > 0 else "pay"] += amt
 
-    lines = ["| Category | Amount |", "|---|---:|"]
-    total = Decimal(0)
+    lines = [_TOTAL_HEADER.format(col="Category"), _TOTAL_SEP]
+    grand_dep = grand_pay = Decimal(0)
     for gname, ginfo in sorted(cat_groups.items(), key=lambda x: x[1]["sort"]):
-        group_total = sum(c["amount"] for c in ginfo["cats"].values())
-        if not rpt.show_empty and group_total == 0:
+        g_dep = sum((c["dep"] for c in ginfo["cats"].values()), Decimal(0))
+        g_pay = sum((c["pay"] for c in ginfo["cats"].values()), Decimal(0))
+        if not rpt.show_empty and g_dep + g_pay == 0:
             continue
-        total += group_total
-        lines.append(f"| **{gname}** | **{group_total:,.2f}** |")
+        grand_dep += g_dep
+        grand_pay += g_pay
+        lines.append(_total_row(gname, g_dep, g_pay, num_months, bold=True))
         for cname, cinfo in sorted(ginfo["cats"].items(), key=lambda x: x[1]["sort"]):
-            if not rpt.show_empty and cinfo["amount"] == 0:
+            if not rpt.show_empty and cinfo["dep"] + cinfo["pay"] == 0:
                 continue
-            lines.append(f"| {cname} | {cinfo['amount']:,.2f} |")
-    lines.append(f"| **Total** | **{total:,.2f}** |")
+            lines.append(_total_row(cname, cinfo["dep"], cinfo["pay"], num_months))
+    lines.append("")
+    lines.append(_total_row("Totals", grand_dep, grand_pay, num_months, bold=True))
     return lines
 
 
