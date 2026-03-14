@@ -472,11 +472,28 @@ def _render_time_by_category(
     return lines
 
 
+def _to_tsv(lines: list[str]) -> str:
+    """Convert markdown table lines to tab-separated values."""
+    result = []
+    for line in lines:
+        if line.startswith("|--") or not line.strip():
+            continue
+        if line.startswith("|"):
+            cells = [c.strip().replace("**", "") for c in line.split("|")[1:-1]]
+            result.append("\t".join(cells))
+        elif line.startswith("#"):
+            result.append(line.lstrip("# "))
+        elif line.startswith("*") and line.endswith("*"):
+            result.append(line.strip("*"))
+    return "\n".join(result)
+
+
 @app.command
-def report(name: str, *, mode: str | None = None):
+def report(name: str, *, mode: str | None = None, tsv: bool = False):
     """Render a custom report by name as a markdown table.
 
     Use --mode to override the report's display mode ("total" or "time").
+    Use --tsv for tab-separated output that pastes into Google Sheets / Gmail.
     """
     with open_actual() as actual:
         s = actual.session
@@ -520,7 +537,10 @@ def report(name: str, *, mode: str | None = None):
         else:
             lines = _render_total_mode(txns, group_by, descending, rpt, start, end)
 
-        Console().print(Markdown("\n".join(lines)))
+        if tsv:
+            print(_to_tsv(lines))
+        else:
+            Console().print(Markdown("\n".join(lines)))
 
 
 if __name__ == "__main__":
