@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import tempfile
 from collections import defaultdict
 from collections.abc import Sequence
 from contextlib import contextmanager
@@ -488,12 +490,74 @@ def _to_tsv(lines: list[str]) -> str:
     return "\n".join(result)
 
 
+def _to_html(lines: list[str]) -> str:
+    """Convert markdown lines to an HTML table."""
+    parts: list[str] = []
+    rows: list[str] = []
+    header_done = False
+    for line in lines:
+        if not line.strip():
+            continue
+        if line.startswith("# "):
+            parts.append(f"<h3>{line[2:]}</h3>")
+        elif line.startswith("*") and line.endswith("*"):
+            parts.append(f"<p><em>{line.strip('*')}</em></p>")
+        elif line.startswith("|--"):
+            header_done = True
+        elif line.startswith("|"):
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            if not header_done:
+                rows.append("<tr>" + "".join(f"<th>{c}</th>" for c in cells) + "</tr>")
+            else:
+                tds = []
+                for cell in cells:
+                    bold = cell.startswith("**") and cell.endswith("**")
+                    text = cell.replace("**", "")
+                    try:
+                        float(text.strip().replace(",", ""))
+                        align = ' align="right"'
+                    except ValueError:
+                        align = ""
+                    inner = f"<b>{text}</b>" if bold else text
+                    tds.append(f"<td{align}>{inner}</td>")
+                rows.append(f"<tr>{''.join(tds)}</tr>")
+
+    return (
+        f"<html><body>{''.join(parts)}"
+        f'<table border="1" cellpadding="4" cellspacing="0">{"".join(rows)}</table>'
+        f"</body></html>"
+    )
+
+
+def _copy_rtf(html: str) -> None:
+    """Convert HTML to RTF and copy to macOS clipboard."""
+    with tempfile.NamedTemporaryFile(suffix=".html", mode="w", delete=False) as f:
+        f.write(html)
+        html_path = f.name
+    rtf_path = html_path.replace(".html", ".rtf")
+    try:
+        subprocess.run(
+            ["textutil", "-convert", "rtf", html_path, "-output", rtf_path],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["osascript", "-e",
+             f'set the clipboard to (read POSIX file "{rtf_path}" as «class RTF »)'],
+            check=True, capture_output=True,
+        )
+    finally:
+        os.unlink(html_path)
+        if os.path.exists(rtf_path):
+            os.unlink(rtf_path)
+
+
 @app.command
-def report(name: str, *, mode: str | None = None, tsv: bool = False):
+def report(name: str, *, mode: str | None = None, tsv: bool = False, rtf: bool = False):
     """Render a custom report by name as a markdown table.
 
     Use --mode to override the report's display mode ("total" or "time").
-    Use --tsv for tab-separated output that pastes into Google Sheets / Gmail.
+    Use --tsv for tab-separated output that pastes into Google Sheets.
+    Use --rtf to copy a formatted table to the clipboard (macOS).
     """
     with open_actual() as actual:
         s = actual.session
@@ -537,7 +601,10 @@ def report(name: str, *, mode: str | None = None, tsv: bool = False):
         else:
             lines = _render_total_mode(txns, group_by, descending, rpt, start, end)
 
-        if tsv:
+        if rtf:
+            _copy_rtf(_to_html(lines))
+            print("Copied to clipboard.")
+        elif tsv:
             print(_to_tsv(lines))
         else:
             Console().print(Markdown("\n".join(lines)))
