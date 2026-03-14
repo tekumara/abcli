@@ -350,7 +350,6 @@ def _render_total_by_category(
             if not rpt.show_empty and cinfo["dep"] + cinfo["pay"] == 0:
                 continue
             lines.append(_total_row(cname, cinfo["dep"], cinfo["pay"], num_months))
-    lines.append("")
     lines.append(_total_row("Totals", grand_dep, grand_pay, num_months, bold=True))
     return lines
 
