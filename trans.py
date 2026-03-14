@@ -1,12 +1,16 @@
 import os
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, timedelta
 from decimal import Decimal
 
 import cyclopts
 from actual import Actual
-from actual.database import Transactions
+from actual.database import CustomReports, Transactions
 from actual.queries import create_transaction, get_category, get_transactions
+from rich.console import Console
+from rich.markdown import Markdown
+from sqlmodel import select
 
 app = cyclopts.App()
 
@@ -120,6 +124,121 @@ def split(
 
         actual.commit()
         print("Done.")
+
+
+def _month_start(d: date, offset: int) -> date:
+    """First day of the month `offset` months from `d`."""
+    total = d.year * 12 + (d.month - 1) + offset
+    return date(total // 12, total % 12 + 1, 1)
+
+
+def _resolve_date_range(rpt: CustomReports) -> tuple[date | None, date | None]:
+    if rpt.date_static and rpt.start_date:
+        return date.fromisoformat(rpt.start_date), (
+            date.fromisoformat(rpt.end_date) if rpt.end_date else None
+        )
+    today = date.today()
+    first = today.replace(day=1)
+    match rpt.date_range:
+        case "thisMonth":
+            return first, None
+        case "lastMonth":
+            return _month_start(today, -1), first
+        case s if s and s.startswith("last") and s.endswith("Months"):
+            n = int(s.removeprefix("last").removesuffix("Months"))
+            return _month_start(today, -n), first
+        case "yearToDate":
+            return date(today.year, 1, 1), None
+        case "lastYear":
+            return date(today.year - 1, 1, 1), date(today.year, 1, 1)
+        case _:
+            return None, None
+
+
+def _format_date_range(start: date | None, end: date | None) -> str:
+    if not start and not end:
+        return "All time"
+    parts = []
+    if start:
+        parts.append(start.strftime("%b %Y"))
+    if end:
+        parts.append((end - timedelta(days=1)).strftime("%b %Y"))
+    else:
+        parts.append("present")
+    return " – ".join(parts)
+
+
+def _group_key(t: Transactions, group_by: str) -> str:
+    match group_by:
+        case "Group":
+            return (t.category.group.name or "?") if (t.category and t.category.group) else "Uncategorized"
+        case "Payee":
+            return (t.payee.name or "?") if t.payee else "Unknown"
+        case "Account":
+            return (t.account.name or "?") if t.account else "Unknown"
+        case _:
+            return (t.category.name or "?") if t.category else "Uncategorized"
+
+
+@app.command
+def report(name: str):
+    """Render a custom report by name as a markdown table."""
+    with open_actual() as actual:
+        s = actual.session
+        all_reports = s.exec(select(CustomReports)).all()
+        rpt = next((r for r in all_reports if r.name == name and not r.tombstone), None)
+        if not rpt:
+            available = sorted(r.name or "?" for r in all_reports if not r.tombstone)
+            msg = f"Report {name!r} not found."
+            if available:
+                msg += f" Available: {', '.join(available)}"
+            Console().print(f"[red]{msg}[/red]")
+            return
+
+        start, end = _resolve_date_range(rpt)
+        txns = get_transactions(
+            s,
+            start_date=start,
+            end_date=end,
+            off_budget=None if rpt.show_offbudget else False,
+        )
+
+        if rpt.balance_type == "Expense":
+            txns = [t for t in txns if t.get_amount() < 0]
+        elif rpt.balance_type == "Income":
+            txns = [t for t in txns if t.get_amount() > 0]
+
+        if not rpt.show_hidden:
+            txns = [t for t in txns if not t.category or not t.category.hidden]
+        if not rpt.show_uncategorized:
+            txns = [t for t in txns if t.category_id]
+
+        groups = defaultdict(Decimal)
+        for t in txns:
+            groups[_group_key(t, rpt.group_by or "Category")] += t.get_amount()
+
+        if not rpt.show_empty:
+            groups = {k: v for k, v in groups.items() if v != 0}
+
+        descending = rpt.sort_by != "asc"
+        sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=descending)
+
+        header = rpt.group_by or "Category"
+        lines = [
+            f"# {rpt.name}",
+            "",
+            f"*{_format_date_range(start, end)}*",
+            "",
+            f"| {header} | Amount |",
+            "|---|---:|",
+        ]
+        total = Decimal(0)
+        for key, amount in sorted_groups:
+            total += amount
+            lines.append(f"| {key} | {amount:,.2f} |")
+        lines.append(f"| **Total** | **{total:,.2f}** |")
+
+        Console().print(Markdown("\n".join(lines)))
 
 
 if __name__ == "__main__":

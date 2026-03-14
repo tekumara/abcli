@@ -7,4 +7,5 @@ requires-python = ">=3.12"
 dependencies = [
     "actualpy>=0.21.0",
     "cyclopts>=4.9.0",
+    "rich>=14.3.3",
 ]
