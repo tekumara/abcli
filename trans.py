@@ -283,8 +283,11 @@ def _render_time_mode(
 
 
 @app.command
-def report(name: str):
-    """Render a custom report by name as a markdown table."""
+def report(name: str, *, mode: str | None = None):
+    """Render a custom report by name as a markdown table.
+
+    Use --mode to override the report's display mode ("total" or "time").
+    """
     with open_actual() as actual:
         s = actual.session
         all_reports = s.exec(select(CustomReports)).all()
@@ -322,8 +325,9 @@ def report(name: str):
 
         group_by = rpt.group_by or "Category"
         descending = rpt.sort_by != "asc"
+        effective_mode = mode or rpt.mode
 
-        if rpt.mode == "time":
+        if effective_mode == "time":
             lines = _render_time_mode(txns, group_by, descending, rpt, start, end)
         else:
             lines = _render_total_mode(txns, group_by, descending, rpt, start, end)
