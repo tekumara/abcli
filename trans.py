@@ -1,6 +1,7 @@
 import json
 import os
 from collections import defaultdict
+from collections.abc import Sequence
 from contextlib import contextmanager
 from datetime import date, timedelta
 from decimal import Decimal
@@ -183,6 +184,104 @@ def _group_key(t: Transactions, group_by: str) -> str:
             return (t.category.name or "?") if t.category else "Uncategorized"
 
 
+def _month_columns(start: date | None, end: date | None) -> list[date]:
+    """Generate first-of-month dates spanning start to end (inclusive)."""
+    if not start:
+        return []
+    current = start.replace(day=1)
+    end_month = (end or date.today()).replace(day=1)
+    columns = []
+    while current <= end_month:
+        columns.append(current)
+        current = _month_start(current, 1)
+    return columns
+
+
+def _render_total_mode(
+    txns: Sequence[Transactions],
+    group_by: str,
+    descending: bool,
+    rpt: CustomReports,
+    start: date | None,
+    end: date | None,
+) -> list[str]:
+    groups: dict[str, Decimal] = defaultdict(Decimal)
+    for t in txns:
+        groups[_group_key(t, group_by)] += t.get_amount()
+
+    if not rpt.show_empty:
+        groups = {k: v for k, v in groups.items() if v != 0}
+
+    sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=descending)
+
+    lines = [
+        f"# {rpt.name}",
+        "",
+        f"*{_format_date_range(start, end)}*",
+        "",
+        f"| {group_by} | Amount |",
+        "|---|---:|",
+    ]
+    total = Decimal(0)
+    for key, amount in sorted_groups:
+        total += amount
+        lines.append(f"| {key} | {amount:,.2f} |")
+    lines.append(f"| **Total** | **{total:,.2f}** |")
+    return lines
+
+
+def _render_time_mode(
+    txns: Sequence[Transactions],
+    group_by: str,
+    descending: bool,
+    rpt: CustomReports,
+    start: date | None,
+    end: date | None,
+) -> list[str]:
+    effective_start = start or (min(t.get_date() for t in txns) if txns else date.today())
+    months = _month_columns(effective_start, end)
+
+    data: dict[str, dict[date, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    for t in txns:
+        key = _group_key(t, group_by)
+        month = t.get_date().replace(day=1)
+        data[key][month] += t.get_amount()
+
+    if not rpt.show_empty:
+        data = {k: v for k, v in data.items() if any(v.values())}
+
+    sorted_keys = sorted(
+        data.keys(), key=lambda k: sum(data[k].values()), reverse=descending,
+    )
+
+    month_headers = [m.strftime("%b %y") for m in months]
+    lines = [
+        f"# {rpt.name}",
+        "",
+        f"*{_format_date_range(start, end)}*",
+        "",
+        f"| {group_by} | " + " | ".join(month_headers) + " | Total |",
+        "|---" + " | ---:" * len(months) + " | ---:|",
+    ]
+
+    totals_by_month: dict[date, Decimal] = defaultdict(Decimal)
+    grand_total = Decimal(0)
+    for key in sorted_keys:
+        row_total = Decimal(0)
+        cells = []
+        for m in months:
+            amt = data[key].get(m, Decimal(0))
+            cells.append(f"{amt:,.2f}")
+            totals_by_month[m] += amt
+            row_total += amt
+        grand_total += row_total
+        lines.append(f"| {key} | " + " | ".join(cells) + f" | {row_total:,.2f} |")
+
+    total_cells = [f"**{totals_by_month.get(m, Decimal(0)):,.2f}**" for m in months]
+    lines.append("| **Total** | " + " | ".join(total_cells) + f" | **{grand_total:,.2f}** |")
+    return lines
+
+
 @app.command
 def report(name: str):
     """Render a custom report by name as a markdown table."""
@@ -221,30 +320,13 @@ def report(name: str):
         if not rpt.show_uncategorized:
             txns = [t for t in txns if t.category_id]
 
-        groups = defaultdict(Decimal)
-        for t in txns:
-            groups[_group_key(t, rpt.group_by or "Category")] += t.get_amount()
-
-        if not rpt.show_empty:
-            groups = {k: v for k, v in groups.items() if v != 0}
-
+        group_by = rpt.group_by or "Category"
         descending = rpt.sort_by != "asc"
-        sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=descending)
 
-        header = rpt.group_by or "Category"
-        lines = [
-            f"# {rpt.name}",
-            "",
-            f"*{_format_date_range(start, end)}*",
-            "",
-            f"| {header} | Amount |",
-            "|---|---:|",
-        ]
-        total = Decimal(0)
-        for key, amount in sorted_groups:
-            total += amount
-            lines.append(f"| {key} | {amount:,.2f} |")
-        lines.append(f"| **Total** | **{total:,.2f}** |")
+        if rpt.mode == "time":
+            lines = _render_time_mode(txns, group_by, descending, rpt, start, end)
+        else:
+            lines = _render_total_mode(txns, group_by, descending, rpt, start, end)
 
         Console().print(Markdown("\n".join(lines)))
 
