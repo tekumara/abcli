@@ -184,6 +184,61 @@ def _group_key(t: Transactions, group_by: str) -> str:
             return (t.category.name or "?") if t.category else "Uncategorized"
 
 
+def _cat_info(t: Transactions) -> tuple[str, float, str, float]:
+    """Returns (group_name, group_sort, cat_name, cat_sort) for budget ordering."""
+    if t.category:
+        cname = t.category.name or "?"
+        csort = t.category.sort_order or 0.0
+        if t.category.group:
+            gname = t.category.group.name or "?"
+            gsort = t.category.group.sort_order or 0.0
+        else:
+            gname, gsort = "Other", float("inf")
+    else:
+        gname, gsort = "Other", float("inf")
+        cname, csort = "Uncategorized", float("inf")
+    return gname, gsort, cname, csort
+
+
+def _apply_conditions(
+    txns: Sequence[Transactions], conditions_json: str | None, conditions_op: str | None = "and",
+) -> list[Transactions]:
+    if not conditions_json:
+        return list(txns)
+    conditions = json.loads(conditions_json)
+    if not conditions:
+        return list(txns)
+
+    def _field(t: Transactions, field: str) -> str | None:
+        match field:
+            case "category":
+                return t.category_id
+            case "account":
+                return t.acct
+            case "payee":
+                return t.payee_id
+            case _:
+                return None
+
+    def _check(t: Transactions, cond: dict) -> bool:
+        val = _field(t, cond["field"])
+        target = cond["value"]
+        match cond["op"]:
+            case "is":
+                return val == target
+            case "isNot":
+                return val != target
+            case "oneOf":
+                return val in target
+            case "notOneOf":
+                return val not in target
+            case _:
+                return True
+
+    combine = any if conditions_op == "or" else all
+    return [t for t in txns if combine(_check(t, c) for c in conditions)]
+
+
 def _month_columns(start: date | None, end: date | None) -> list[date]:
     """Generate first-of-month dates spanning start to end (inclusive)."""
     if not start:
@@ -197,6 +252,10 @@ def _month_columns(start: date | None, end: date | None) -> list[date]:
     return columns
 
 
+def _report_header(rpt: CustomReports, start: date | None, end: date | None) -> list[str]:
+    return [f"# {rpt.name}", "", f"*{_format_date_range(start, end)}*", ""]
+
+
 def _render_total_mode(
     txns: Sequence[Transactions],
     group_by: str,
@@ -204,6 +263,19 @@ def _render_total_mode(
     rpt: CustomReports,
     start: date | None,
     end: date | None,
+) -> list[str]:
+    lines = _report_header(rpt, start, end)
+
+    if group_by == "Category":
+        lines += _render_total_by_category(txns, rpt)
+    else:
+        lines += _render_total_flat(txns, group_by, descending, rpt)
+
+    return lines
+
+
+def _render_total_flat(
+    txns: Sequence[Transactions], group_by: str, descending: bool, rpt: CustomReports,
 ) -> list[str]:
     groups: dict[str, Decimal] = defaultdict(Decimal)
     for t in txns:
@@ -214,18 +286,40 @@ def _render_total_mode(
 
     sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=descending)
 
-    lines = [
-        f"# {rpt.name}",
-        "",
-        f"*{_format_date_range(start, end)}*",
-        "",
-        f"| {group_by} | Amount |",
-        "|---|---:|",
-    ]
+    lines = [f"| {group_by} | Amount |", "|---|---:|"]
     total = Decimal(0)
     for key, amount in sorted_groups:
         total += amount
         lines.append(f"| {key} | {amount:,.2f} |")
+    lines.append(f"| **Total** | **{total:,.2f}** |")
+    return lines
+
+
+def _render_total_by_category(
+    txns: Sequence[Transactions], rpt: CustomReports,
+) -> list[str]:
+    cat_groups: dict[str, dict] = {}
+    for t in txns:
+        gname, gsort, cname, csort = _cat_info(t)
+        if gname not in cat_groups:
+            cat_groups[gname] = {"sort": gsort, "cats": {}}
+        cats = cat_groups[gname]["cats"]
+        if cname not in cats:
+            cats[cname] = {"sort": csort, "amount": Decimal(0)}
+        cats[cname]["amount"] += t.get_amount()
+
+    lines = ["| Category | Amount |", "|---|---:|"]
+    total = Decimal(0)
+    for gname, ginfo in sorted(cat_groups.items(), key=lambda x: x[1]["sort"]):
+        group_total = sum(c["amount"] for c in ginfo["cats"].values())
+        if not rpt.show_empty and group_total == 0:
+            continue
+        total += group_total
+        lines.append(f"| **{gname}** | **{group_total:,.2f}** |")
+        for cname, cinfo in sorted(ginfo["cats"].items(), key=lambda x: x[1]["sort"]):
+            if not rpt.show_empty and cinfo["amount"] == 0:
+                continue
+            lines.append(f"| {cname} | {cinfo['amount']:,.2f} |")
     lines.append(f"| **Total** | **{total:,.2f}** |")
     return lines
 
@@ -240,26 +334,46 @@ def _render_time_mode(
 ) -> list[str]:
     effective_start = start or (min(t.get_date() for t in txns) if txns else date.today())
     months = _month_columns(effective_start, end)
+    lines = _report_header(rpt, start, end)
 
+    if group_by == "Category":
+        lines += _render_time_by_category(txns, months, rpt)
+    else:
+        lines += _render_time_flat(txns, group_by, months, descending, rpt)
+
+    return lines
+
+
+def _fmt_cells(amounts: dict[date, Decimal], months: list[date]) -> tuple[list[str], Decimal]:
+    """Format per-month cells and return (cells, row_total)."""
+    cells = []
+    total = Decimal(0)
+    for m in months:
+        amt = amounts.get(m, Decimal(0))
+        cells.append(f"{amt:,.2f}")
+        total += amt
+    return cells, total
+
+
+def _render_time_flat(
+    txns: Sequence[Transactions],
+    group_by: str,
+    months: list[date],
+    descending: bool,
+    rpt: CustomReports,
+) -> list[str]:
     data: dict[str, dict[date, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
     for t in txns:
         key = _group_key(t, group_by)
-        month = t.get_date().replace(day=1)
-        data[key][month] += t.get_amount()
+        data[key][t.get_date().replace(day=1)] += t.get_amount()
 
     if not rpt.show_empty:
         data = {k: v for k, v in data.items() if any(v.values())}
 
-    sorted_keys = sorted(
-        data.keys(), key=lambda k: sum(data[k].values()), reverse=descending,
-    )
+    sorted_keys = sorted(data.keys(), key=lambda k: sum(data[k].values()), reverse=descending)
 
     month_headers = [m.strftime("%b %y") for m in months]
     lines = [
-        f"# {rpt.name}",
-        "",
-        f"*{_format_date_range(start, end)}*",
-        "",
         f"| {group_by} | " + " | ".join(month_headers) + " | Total |",
         "|---" + " | ---:" * len(months) + " | ---:|",
     ]
@@ -267,17 +381,63 @@ def _render_time_mode(
     totals_by_month: dict[date, Decimal] = defaultdict(Decimal)
     grand_total = Decimal(0)
     for key in sorted_keys:
-        row_total = Decimal(0)
-        cells = []
-        for m in months:
-            amt = data[key].get(m, Decimal(0))
-            cells.append(f"{amt:,.2f}")
-            totals_by_month[m] += amt
-            row_total += amt
+        cells, row_total = _fmt_cells(data[key], months)
         grand_total += row_total
+        for m in months:
+            totals_by_month[m] += data[key].get(m, Decimal(0))
         lines.append(f"| {key} | " + " | ".join(cells) + f" | {row_total:,.2f} |")
 
     total_cells = [f"**{totals_by_month.get(m, Decimal(0)):,.2f}**" for m in months]
+    lines.append("| **Total** | " + " | ".join(total_cells) + f" | **{grand_total:,.2f}** |")
+    return lines
+
+
+def _render_time_by_category(
+    txns: Sequence[Transactions], months: list[date], rpt: CustomReports,
+) -> list[str]:
+    cat_groups: dict[str, dict] = {}
+    for t in txns:
+        gname, gsort, cname, csort = _cat_info(t)
+        if gname not in cat_groups:
+            cat_groups[gname] = {"sort": gsort, "cats": {}}
+        cats = cat_groups[gname]["cats"]
+        if cname not in cats:
+            cats[cname] = {"sort": csort, "months": defaultdict(Decimal)}
+        cats[cname]["months"][t.get_date().replace(day=1)] += t.get_amount()
+
+    month_headers = [m.strftime("%b %y") for m in months]
+    lines = [
+        "| Category | " + " | ".join(month_headers) + " | Total |",
+        "|---" + " | ---:" * len(months) + " | ---:|",
+    ]
+
+    grand_totals: dict[date, Decimal] = defaultdict(Decimal)
+    grand_total = Decimal(0)
+    for gname, ginfo in sorted(cat_groups.items(), key=lambda x: x[1]["sort"]):
+        group_months: dict[date, Decimal] = defaultdict(Decimal)
+        cat_rows: list[str] = []
+
+        for cname, cinfo in sorted(ginfo["cats"].items(), key=lambda x: x[1]["sort"]):
+            cells, row_total = _fmt_cells(cinfo["months"], months)
+            if not rpt.show_empty and row_total == 0:
+                continue
+            for m in months:
+                group_months[m] += cinfo["months"].get(m, Decimal(0))
+            cat_rows.append(f"| {cname} | " + " | ".join(cells) + f" | {row_total:,.2f} |")
+
+        group_total = sum(group_months.values())
+        if not rpt.show_empty and group_total == 0:
+            continue
+
+        group_cells = [f"**{group_months.get(m, Decimal(0)):,.2f}**" for m in months]
+        lines.append("| **" + gname + "** | " + " | ".join(group_cells) + f" | **{group_total:,.2f}** |")
+        lines.extend(cat_rows)
+
+        for m in months:
+            grand_totals[m] += group_months.get(m, Decimal(0))
+        grand_total += group_total
+
+    total_cells = [f"**{grand_totals.get(m, Decimal(0)):,.2f}**" for m in months]
     lines.append("| **Total** | " + " | ".join(total_cells) + f" | **{grand_total:,.2f}** |")
     return lines
 
@@ -313,10 +473,7 @@ def report(name: str, *, mode: str | None = None):
         elif rpt.balance_type == "Income":
             txns = [t for t in txns if t.get_amount() > 0]
 
-        if rpt.selected_categories:
-            raw = json.loads(rpt.selected_categories)
-            cat_ids = {(c["id"] if isinstance(c, dict) else c) for c in raw}
-            txns = [t for t in txns if t.category_id in cat_ids]
+        txns = _apply_conditions(txns, rpt.conditions, rpt.conditions_op)
 
         if not rpt.show_hidden:
             txns = [t for t in txns if not t.category or not t.category.hidden]
@@ -325,6 +482,7 @@ def report(name: str, *, mode: str | None = None):
 
         group_by = rpt.group_by or "Category"
         descending = rpt.sort_by != "asc"
+
         effective_mode = mode or rpt.mode
 
         if effective_mode == "time":
