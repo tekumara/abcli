@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { Command, InvalidArgumentError } from "commander";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, unlink, writeFile } from "node:fs/promises";
@@ -44,30 +45,6 @@ async function getActualApi() {
   }
 
   return actualApiModulePromise;
-}
-
-function printUsage() {
-  console.log(
-    [
-      "Usage: node trans.js <command> [options]",
-      "",
-      "Commands:",
-      "  find <payee> <txn-date>",
-      "      Find transactions by exact payee name and ISO date (YYYY-MM-DD).",
-      "",
-      "  split [--transaction-id <id> | --payee <payee> --txn-date <date>] <notes> <category> <amount> ...",
-      "      Split a transaction into sub-transactions.",
-      "",
-      "  report <name> [--mode total|time] [--tsv] [--pbcopy]",
-      "      Render a custom report by name.",
-      "",
-      "Environment:",
-      "  ACTUAL_PASSWORD        Required.",
-      "  ACTUAL_BUDGET_SYNC_ID  Optional. Budget name, groupId, or cloudFileId. Defaults to the first available budget.",
-      "  ACTUAL_SERVER_URL      Optional. Defaults to http://localhost:5007",
-      "  ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual",
-    ].join("\n"),
-  );
 }
 
 function fail(message) {
@@ -390,99 +367,102 @@ function printTransaction(transaction, metadata) {
   console.log(`  amount:   ${formatAmount(transaction.amount)}`);
 }
 
-function parseCommandArgs(argv) {
-  const args = argv.slice(2);
-  const command = args.shift();
+function parseMode(value) {
+  if (value !== "total" && value !== "time") {
+    throw new InvalidArgumentError("--mode must be either total or time.");
+  }
+  return value;
+}
 
-  if (!command || command === "-h" || command === "--help") {
-    return { command: "help" };
+function parseSplitTriplets(entries) {
+  if (entries.length === 0 || entries.length % 3 !== 0) {
+    throw new InvalidArgumentError(
+      "Split entries must be provided as repeated triplets: <notes> <category> <amount>.",
+    );
   }
 
-  switch (command) {
-    case "find":
-      if (args.includes("-h") || args.includes("--help")) {
-        return { command: "help" };
-      }
-      if (args.length !== 2) {
-        fail("Usage: node trans.js find <payee> <txn-date>");
-      }
-      return { command, payee: args[0], txnDate: args[1] };
-    case "split": {
-      const parsed = {
-        command,
-        transactionId: null,
-        payee: null,
-        txnDate: null,
-        splitTriplets: [],
-      };
-      const positional = [];
-      for (let index = 0; index < args.length; index += 1) {
-        const arg = args[index];
-        if (arg === "--transaction-id") {
-          parsed.transactionId = args[++index];
-        } else if (arg === "--payee") {
-          parsed.payee = args[++index];
-        } else if (arg === "--txn-date") {
-          parsed.txnDate = args[++index];
-        } else if (arg === "-h" || arg === "--help") {
-          return { command: "help" };
-        } else {
-          positional.push(arg);
-        }
-      }
-
-      if (!parsed.transactionId && !(parsed.payee && parsed.txnDate)) {
-        fail("Provide --transaction-id or both --payee and --txn-date.");
-      }
-      if (parsed.transactionId && (parsed.payee || parsed.txnDate)) {
-        fail("Use either --transaction-id or --payee/--txn-date, not both.");
-      }
-      if (positional.length === 0 || positional.length % 3 !== 0) {
-        fail("Split entries must be provided as repeated triplets: <notes> <category> <amount>.");
-      }
-
-      for (let index = 0; index < positional.length; index += 3) {
-        parsed.splitTriplets.push({
-          notes: positional[index],
-          categoryName: positional[index + 1],
-          amount: parseAmountInput(positional[index + 2]),
-        });
-      }
-
-      return parsed;
-    }
-    case "report": {
-      if (args.length === 0) {
-        fail("Usage: node trans.js report <name> [--mode total|time] [--tsv] [--pbcopy]");
-      }
-      const parsed = { command, name: null, mode: null, tsv: false, pbcopy: false };
-      for (let index = 0; index < args.length; index += 1) {
-        const arg = args[index];
-        if (!parsed.name && !arg.startsWith("-")) {
-          parsed.name = arg;
-        } else if (arg === "--mode") {
-          parsed.mode = args[++index];
-        } else if (arg === "--tsv") {
-          parsed.tsv = true;
-        } else if (arg === "--pbcopy") {
-          parsed.pbcopy = true;
-        } else if (arg === "-h" || arg === "--help") {
-          return { command: "help" };
-        } else {
-          fail(`Unknown argument ${JSON.stringify(arg)}.`);
-        }
-      }
-      if (!parsed.name) {
-        fail("Report name is required.");
-      }
-      if (parsed.mode && parsed.mode !== "total" && parsed.mode !== "time") {
-        fail("--mode must be either total or time.");
-      }
-      return parsed;
-    }
-    default:
-      fail(`Unknown command ${JSON.stringify(command)}.`);
+  const splitTriplets = [];
+  for (let index = 0; index < entries.length; index += 3) {
+    splitTriplets.push({
+      notes: entries[index],
+      categoryName: entries[index + 1],
+      amount: parseAmountInput(entries[index + 2]),
+    });
   }
+  return splitTriplets;
+}
+
+function validateSplitSelector(options) {
+  if (!options.transactionId && !(options.payee && options.txnDate)) {
+    fail("Provide --transaction-id or both --payee and --txn-date.");
+  }
+  if (options.transactionId && (options.payee || options.txnDate)) {
+    fail("Use either --transaction-id or --payee/--txn-date, not both.");
+  }
+}
+
+function buildProgram() {
+  const program = new Command();
+
+  program
+    .name("node trans.js")
+    .description("Actual budget helper commands.")
+    .showHelpAfterError()
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Environment:",
+        "  ACTUAL_PASSWORD        Required.",
+        "  ACTUAL_BUDGET_SYNC_ID  Optional. Budget name, groupId, or cloudFileId. Defaults to the first available budget.",
+        "  ACTUAL_SERVER_URL      Optional. Defaults to http://localhost:5007",
+        "  ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual",
+      ].join("\n"),
+    );
+
+  program
+    .command("find")
+    .description("Find transactions by exact payee name and ISO date (YYYY-MM-DD).")
+    .argument("<payee>")
+    .argument("<txn-date>")
+    .action(async (payee, txnDate) => {
+      await commandFind({ payee, txnDate });
+    });
+
+  program
+    .command("split")
+    .description("Split a transaction into sub-transactions.")
+    .option("--transaction-id <id>")
+    .option("--payee <payee>")
+    .option("--txn-date <date>")
+    .argument("<entries...>")
+    .action(async (entries, options) => {
+      validateSplitSelector(options);
+      await commandSplit({
+        transactionId: options.transactionId ?? null,
+        payee: options.payee ?? null,
+        txnDate: options.txnDate ?? null,
+        splitTriplets: parseSplitTriplets(entries),
+      });
+    });
+
+  program
+    .command("report")
+    .description("Render a custom report by name.")
+    .argument("<name>")
+    .option("--mode <mode>", "report mode", parseMode)
+    .option("--tsv", "output tab-separated text")
+    .option("--pbcopy", "copy rich text output to the clipboard")
+    .action(async (name, options) => {
+      await commandReport({
+        name,
+        mode: options.mode ?? null,
+        tsv: options.tsv ?? false,
+        pbcopy: options.pbcopy ?? false,
+      });
+    });
+
+  return program;
 }
 
 function findGroupedTransaction(transactions, transactionId) {
@@ -646,23 +626,12 @@ async function commandReport(args) {
 }
 
 async function main() {
-  const args = parseCommandArgs(process.argv);
-  switch (args.command) {
-    case "help":
-      printUsage();
-      break;
-    case "find":
-      await commandFind(args);
-      break;
-    case "split":
-      await commandSplit(args);
-      break;
-    case "report":
-      await commandReport(args);
-      break;
-    default:
-      fail(`Unsupported command ${JSON.stringify(args.command)}.`);
+  const program = buildProgram();
+  if (process.argv.length <= 2) {
+    program.outputHelp();
+    return;
   }
+  await program.parseAsync(process.argv);
 }
 
 await main().catch((error) => {
