@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@actual-app/api": "^26.3.0",
+    "cli-table3": "^0.6.5",
     "puppeteer-core": "^23.11.1"
   }
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import Table from "cli-table3";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, unlink, writeFile } from "node:fs/promises";
@@ -718,6 +719,84 @@ function toTsv(lines) {
   return output.join("\n");
 }
 
+function stripMarkdownBold(value) {
+  return value.replaceAll("**", "");
+}
+
+function renderTerminalCell(value) {
+  if (value.startsWith("**") && value.endsWith("**")) {
+    return `\x1b[1m${stripMarkdownBold(value)}\x1b[22m`;
+  }
+  return stripMarkdownBold(value);
+}
+
+function isNumericCell(value) {
+  return /^-?[\d,]+(?:\.\d+)?$/.test(stripMarkdownBold(value).trim());
+}
+
+function renderCliTable(lines) {
+  const preamble = [];
+  let header = null;
+  const rows = [];
+  let headerDone = false;
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      preamble.push(line.slice(2));
+      continue;
+    }
+    if (line.startsWith("*") && line.endsWith("*")) {
+      preamble.push(line.slice(1, -1));
+      continue;
+    }
+    if (line.startsWith("|--")) {
+      headerDone = true;
+      continue;
+    }
+    if (!line.startsWith("|")) {
+      continue;
+    }
+
+    const cells = line
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+
+    if (!headerDone && !header) {
+      header = cells;
+    } else {
+      rows.push(cells);
+    }
+  }
+
+  if (!header) {
+    return lines.join("\n");
+  }
+
+  const colAligns = header.map((_, columnIndex) => {
+    if (columnIndex === 0) {
+      return "left";
+    }
+    return rows.every((row) => isNumericCell(row[columnIndex] ?? "")) ? "right" : "left";
+  });
+
+  const table = new Table({
+    head: header.map(stripMarkdownBold),
+    colAligns,
+    style: { head: [], border: [] },
+    wordWrap: true,
+  });
+
+  for (const row of rows) {
+    table.push(row.map(renderTerminalCell));
+  }
+
+  return [...preamble, table.toString()].join("\n\n");
+}
+
 function htmlEscape(value) {
   return value
     .replaceAll("&", "&amp;")
@@ -1220,7 +1299,7 @@ async function commandReport(args) {
       return;
     }
 
-    console.log(lines.join("\n"));
+    console.log(renderCliTable(lines));
   });
 }
 
