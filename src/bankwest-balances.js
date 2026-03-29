@@ -27,7 +27,7 @@ const browser = await Promise.race([
   ),
 ]).catch((e) => {
   console.error("✗ Could not connect to Chrome:", e.message);
-  console.error("  Make sure Chrome is running. Try: browser-start.js");
+  console.error("  Make sure Chrome is running. Try: node src/browser-start.js");
   process.exit(1);
 });
 

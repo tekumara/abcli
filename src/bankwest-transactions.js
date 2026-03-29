@@ -11,7 +11,7 @@
  *   - Logged in to Bankwest Online Banking
  *
  * Usage:
- *   bankwest-transactions.js <account-name> [options]
+ *   node src/bankwest-transactions.js <account-name> [options]
  *
  *   account-name    Case-insensitive substring match against Bankwest account
  *                   dropdown (e.g. "offset joint", "home loan john"). Must match
@@ -52,7 +52,7 @@ function parseArgs(argv) {
     } else if (args[i] === "-h" || args[i] === "--help") {
       console.log(
         [
-          "Usage: bankwest-transactions.js <account-name> [options]",
+          "Usage: node src/bankwest-transactions.js <account-name> [options]",
           "",
           "  account-name    Case-insensitive substring match against Bankwest",
           "                  account dropdown (e.g. \"offset joint\", \"home loan john\").",
@@ -114,7 +114,7 @@ const browser = await Promise.race([
   ),
 ]).catch((e) => {
   console.error("✗ Could not connect to Chrome:", e.message);
-  console.error("  Make sure Chrome is running. Try: browser-start.js");
+  console.error("  Make sure Chrome is running. Try: node src/browser-start.js");
   process.exit(1);
 });
 

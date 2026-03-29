@@ -501,7 +501,7 @@ function buildProgram() {
   const program = new Command();
 
   program
-    .name("node trans.js")
+    .name("node src/trans.js")
     .description("Actual budget helper commands.")
     .showHelpAfterError()
     .addHelpText(
