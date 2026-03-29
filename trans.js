@@ -14,11 +14,9 @@ import {
   filterReportTransactions,
   formatAmount,
   payeeName,
-  renderCliTable,
   resolveDateRange,
-  toHtml,
-  toTsv,
 } from "./reporting.js";
+import { renderCliTable, toHtml, toTsv } from "./table-rendering.js";
 
 const execFile = promisify(execFileCallback);
 
