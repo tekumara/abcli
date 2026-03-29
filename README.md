@@ -78,8 +78,8 @@ Cleaning transactions before importing them:
 ## Transactions
 
 ```bash
-❯ node src/trans.js --help
-Usage: node src/trans.js <command> [options]
+❯ abcli --help
+Usage: abcli <command> [options]
 
 Commands:
   budgets

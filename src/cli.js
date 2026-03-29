@@ -501,7 +501,7 @@ function buildProgram() {
   const program = new Command();
 
   program
-    .name("node src/trans.js")
+    .name("abcli")
     .description("Actual budget helper commands.")
     .showHelpAfterError()
     .addHelpText(
