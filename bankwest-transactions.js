@@ -20,7 +20,7 @@
  *   -r, --range     Date range preset: L7Days, L14Days, L30Days, L60Days,
  *                   L90Days, LMONTH, SLMONTH, TLMONTH (default: L30Days)
  *   --from          Custom start date (DD/MM/YYYY), requires --to
- *   --to            Custom end date (DD/MM/YYYY), requires --from
+ *   --to            Custom end date (DD/MM/YYYY or "today"), requires --from
  *   -o, --output    Output directory for exported file (default: cwd)
  */
 
@@ -62,7 +62,7 @@ function parseArgs(argv) {
           "                  L7Days, L14Days, L30Days, L60Days, L90Days,",
           "                  LMONTH, SLMONTH, TLMONTH",
           "  --from          Custom start date (DD/MM/YYYY), requires --to",
-          "  --to            Custom end date (DD/MM/YYYY), requires --from",
+          '  --to            Custom end date (DD/MM/YYYY or "today"), requires --from',
           "  -o, --output    Output directory for exported file (default: cwd)",
         ].join("\n")
       );
@@ -78,6 +78,11 @@ function parseArgs(argv) {
     console.error("✗ Account name is required");
     console.error("  Run with --help for usage");
     process.exit(1);
+  }
+
+  if (opts.to === "today") {
+    const d = new Date();
+    opts.to = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
   }
 
   if ((opts.from && !opts.to) || (opts.to && !opts.from)) {
