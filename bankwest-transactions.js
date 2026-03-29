@@ -169,7 +169,7 @@ if (account.error) {
 const accountName = account.text.replace(/ - .*/, "");
 console.error(`Account: ${account.text}`);
 
-// ── Fill and submit search form ─────────────────────────────────────────────
+// ── Fill search form and export directly ─────────────────────────────────────
 
 await page.evaluate(
   ({ accountValue, range, from, to }) => {
@@ -188,62 +188,30 @@ await page.evaluate(
       document.getElementById("_ctl0_ContentMain_dpToDate_txtDate").value =
         to;
     }
+
+    // Select MS Money export format
+    document.getElementById("_ctl0_ContentButtonsLeft_ddlExportType").value =
+      "MSMoney";
   },
   { accountValue: account.value, range: opts.range, from: opts.from, to: opts.to }
 );
 
 console.error(`Range:   ${opts.range}${opts.from ? ` (${opts.from} - ${opts.to})` : ""}`);
 
-// Submit search form via CDP — use setTimeout to avoid blocking on navigation
-const cdp = await page.createCDPSession();
-await cdp.send("Runtime.evaluate", {
-  expression:
-    'setTimeout(() => document.getElementById("_ctl0_ContentButtonsRight_btnSearch").click(), 50)',
-});
-
-// Wait for results page to load (postback navigation + render)
-await new Promise((r) => setTimeout(r, 5000));
-const resultsUrl = await page.evaluate(() => window.location.href);
-if (!resultsUrl.includes("TransactionSearchResults")) {
-  console.error("✗ Search did not navigate to results page");
-  console.error(`  Current URL: ${resultsUrl}`);
-  await browser.disconnect();
-  process.exit(1);
-}
-
-// ── Check results ───────────────────────────────────────────────────────────
-
-const noData = await page.evaluate(() => {
-  const table = document.getElementById("_ctl0_ContentMain_grdBalances");
-  return table?.textContent?.includes("No data to list") ?? true;
-});
-
-if (noData) {
-  console.error("✗ No transactions found for the selected criteria");
-  await browser.disconnect();
-  process.exit(1);
-}
-
-// ── Set up download directory and export ────────────────────────────────────
+// ── Export ──────────────────────────────────────────────────────────────────
 
 const downloadDir = await mkdtemp(join(tmpdir(), "bankwest-"));
 
-// Create fresh CDP session for the results page
-const downloadCdp = await page.createCDPSession();
-await downloadCdp.send("Page.setDownloadBehavior", {
+const cdp = await page.createCDPSession();
+await cdp.send("Page.setDownloadBehavior", {
   behavior: "allow",
   downloadPath: downloadDir,
 });
 
-await page.evaluate(() => {
-  document.getElementById("_ctl0_ContentButtonsRight_ddlExportType").value =
-    "MSMoney";
-});
-
 // Export button triggers an ASP.NET postback that returns a file download
-await downloadCdp.send("Runtime.evaluate", {
+await cdp.send("Runtime.evaluate", {
   expression:
-    'setTimeout(() => document.getElementById("_ctl0_ContentButtonsRight_btnExport").click(), 50)',
+    'setTimeout(() => document.getElementById("_ctl0_ContentButtonsLeft_btnExport").click(), 50)',
 });
 
 // Poll for the .qif file to appear
