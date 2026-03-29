@@ -3,7 +3,7 @@
 import { Command, InvalidArgumentError } from "commander";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -23,7 +23,8 @@ import {
 const execFile = promisify(execFileCallback);
 
 const SERVER_URL = process.env.ACTUAL_SERVER_URL ?? "http://localhost:5007";
-const DATA_DIR = process.env.ACTUAL_DATA_DIR ?? "/tmp/actual";
+const DEFAULT_DATA_DIR = "/tmp/actual";
+const DATA_DIR = process.env.ACTUAL_DATA_DIR ?? DEFAULT_DATA_DIR;
 let actualApiModulePromise;
 
 async function getActualApi() {
@@ -272,6 +273,10 @@ async function withActual(fn, { loadBudget = true } = {}) {
   const password = process.env.ACTUAL_PASSWORD;
   if (!password) {
     fail("ACTUAL_PASSWORD is required.");
+  }
+
+  if (DATA_DIR === DEFAULT_DATA_DIR && !existsSync(DATA_DIR)) {
+    await mkdir(DATA_DIR, { recursive: true });
   }
 
   await actualApi.init({
