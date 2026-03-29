@@ -278,8 +278,11 @@ async function withActual(fn, { loadBudget = true } = {}) {
   }
 
   await actualApi.init({
+    // Budget data will be cached locally here, in subdirectories for each file.
     dataDir: DATA_DIR,
+    // This is the URL of your running server, started from the CLI or the Desktop app
     serverURL: SERVER_URL,
+    // This is the password you use to log into the server
     password,
     verbose: false,
   });
@@ -288,8 +291,13 @@ async function withActual(fn, { loadBudget = true } = {}) {
     if (loadBudget) {
       const budget = await resolveBudget();
       if (budget.groupId) {
+        // For cloud budgets, open by sync id so Actual loads the local copy or
+        // downloads it and syncs it with the server as needed.
         await actualApi.downloadBudget(budget.groupId, { password });
       } else if (budget.id) {
+        // Local-only budgets have no sync id, so they can only be opened
+        // directly from the local data dir by local budget id.
+        // TODO: make it possible to open local-only budgets - right now they are never used
         await actualApi.loadBudget(budget.id);
       } else {
         fail(`Budget ${JSON.stringify(budget.name ?? "(unknown)")} is missing both local id and sync id.`);
@@ -605,7 +613,9 @@ async function commandBudgets() {
   await withActual(async ({ actualApi }) => {
     const budgets = summarizeBudgets(await actualApi.getBudgets());
     if (budgets.length === 0) {
-      console.log("No budgets found.");
+      console.log(
+        "No budgets found. You need to create cloud files first: https://actualbudget.org/docs/getting-started/sync/#this-file-is-not-a-cloud-file",
+      );
       return;
     }
     printBudgets(budgets);
