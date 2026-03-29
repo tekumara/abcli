@@ -27,6 +27,7 @@ let actualApiModulePromise;
 
 async function getActualApi() {
   if (!actualApiModulePromise) {
+    // needed because of https://github.com/actualbudget/actual/issues/7201
     if (!globalThis.navigator) {
       const platform =
         process.platform === "darwin"
