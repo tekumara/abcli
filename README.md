@@ -85,6 +85,9 @@ Commands:
   budgets
       List budgets and their sync ids.
 
+  accounts
+      List accounts and their current balances.
+
   find <payee> <txn-date>
       Find transactions by exact payee name and ISO date (YYYY-MM-DD).
 

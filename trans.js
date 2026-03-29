@@ -415,6 +415,55 @@ function printBudgets(budgets) {
   }
 }
 
+function buildAccountsTable(accounts) {
+  const rows = accounts.map((account) => {
+    const suffixes = [];
+    if (truthy(account.offbudget)) {
+      suffixes.push("off budget");
+    }
+    if (truthy(account.closed)) {
+      suffixes.push("closed");
+    }
+
+    return {
+      ...account,
+      displayName:
+        suffixes.length > 0
+          ? `${account.name} (${suffixes.join(", ")})`
+          : account.name,
+    };
+  });
+
+  rows.sort((left, right) => {
+    const leftRank = Number(truthy(left.closed)) * 2 + Number(truthy(left.offbudget));
+    const rightRank = Number(truthy(right.closed)) * 2 + Number(truthy(right.offbudget));
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return left.displayName.localeCompare(right.displayName);
+  });
+
+  const total = rows.reduce((sum, account) => sum + account.balance, 0);
+
+  return {
+    title: "Accounts",
+    subtitle: "Current balances",
+    columns: [
+      { label: "Account", align: "left" },
+      { label: "Balance", align: "right" },
+    ],
+    rows: [
+      ...rows.map((account) => ({
+        cells: [account.displayName, formatAmount(account.balance)],
+      })),
+      {
+        bold: true,
+        cells: ["Total", formatAmount(total)],
+      },
+    ],
+  };
+}
+
 function parseSplitTriplets(entries) {
   if (entries.length === 0 || entries.length % 3 !== 0) {
     throw new InvalidArgumentError(
@@ -466,6 +515,13 @@ function buildProgram() {
     .description("List budgets and their sync ids.")
     .action(async () => {
       await commandBudgets();
+    });
+
+  program
+    .command("accounts")
+    .description("List accounts and their current balances.")
+    .action(async () => {
+      await commandAccounts();
     });
 
   program
@@ -556,6 +612,25 @@ async function commandBudgets() {
     }
     printBudgets(budgets);
   }, { loadBudget: false });
+}
+
+async function commandAccounts() {
+  await withActual(async ({ actualApi }) => {
+    const accounts = await actualApi.getAccounts();
+    if (accounts.length === 0) {
+      console.log("No accounts found.");
+      return;
+    }
+
+    const rows = await Promise.all(
+      accounts.map(async (account) => ({
+        ...account,
+        balance: await actualApi.getAccountBalance(account.id),
+      })),
+    );
+
+    console.log(renderCliTable(buildAccountsTable(rows)));
+  });
 }
 
 async function resolveSplitTarget(args, metadata) {
