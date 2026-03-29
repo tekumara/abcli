@@ -723,6 +723,23 @@ function stripMarkdownBold(value) {
   return value.replaceAll("**", "");
 }
 
+function stripAnsi(value) {
+  return value.replace(/\x1B\[[0-9;]*m/g, "");
+}
+
+function rstrip(value) {
+  return value.replace(/\s+$/u, "");
+}
+
+function centerText(value, width = process.stdout.columns ?? 80) {
+  const visibleWidth = stripAnsi(value).length;
+  if (visibleWidth >= width) {
+    return value;
+  }
+  const padding = Math.floor((width - visibleWidth) / 2);
+  return `${" ".repeat(padding)}${value}`;
+}
+
 function renderTerminalCell(value) {
   if (value.startsWith("**") && value.endsWith("**")) {
     return `\x1b[1m${stripMarkdownBold(value)}\x1b[22m`;
@@ -786,15 +803,46 @@ function renderCliTable(lines) {
   const table = new Table({
     head: header.map(stripMarkdownBold),
     colAligns,
-    style: { head: [], border: [] },
+    style: { head: [], border: [], compact: true },
     wordWrap: true,
+    chars: {
+      top: "",
+      "top-mid": "",
+      "top-left": "",
+      "top-right": "",
+      bottom: "",
+      "bottom-mid": "",
+      "bottom-left": "",
+      "bottom-right": "",
+      left: "",
+      "left-mid": "",
+      mid: "",
+      "mid-mid": "",
+      right: "",
+      "right-mid": "",
+      middle: "  ",
+    },
   });
 
   for (const row of rows) {
     table.push(row.map(renderTerminalCell));
   }
 
-  return [...preamble, table.toString()].join("\n\n");
+  const tableLines = table
+    .toString()
+    .split("\n")
+    .map(rstrip);
+  const [headerLine, ...bodyLines] = tableLines;
+  const headerIndent = headerLine.match(/^\s*/u)?.[0] ?? "";
+  const underline = `${headerIndent}${"─".repeat(stripAnsi(headerLine.trimStart()).length)}`;
+
+  return [
+    ...preamble.map((line) => centerText(line)),
+    "",
+    headerLine,
+    underline,
+    ...bodyLines,
+  ].join("\n");
 }
 
 function htmlEscape(value) {
@@ -934,6 +982,7 @@ async function withActual(fn) {
     dataDir: DATA_DIR,
     serverURL: SERVER_URL,
     password: process.env.ACTUAL_PASSWORD,
+    verbose: false,
   });
 
   try {
