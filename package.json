@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
+    "@actual-app/api": "^26.3.0",
     "puppeteer-core": "^23.11.1"
   }
 }

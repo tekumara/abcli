@@ -77,15 +77,17 @@ Cleaning transactions before importing them:
 
 ## Transactions
 
-```
-❯ python -m trans
-Usage: trans.py COMMAND
+```bash
+❯ node trans.js --help
+Usage: node trans.js <command> [options]
 
-╭─ Commands ─────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ find         Find a transaction by payee and date.                                                         │
-│ report       Render a custom report by name as a markdown table.                                           │
-│ split        Split a transaction into sub-transactions.                                                    │
-│ --help (-h)  Display this message and exit.                                                                │
-│ --version    Display application version.                                                                  │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+Commands:
+  find <payee> <txn-date>
+      Find transactions by exact payee name and ISO date (YYYY-MM-DD).
+
+  split [--transaction-id <id> | --payee <payee> --txn-date <date>] <notes> <category> <amount> ...
+      Split a transaction into sub-transactions.
+
+  report <name> [--mode total|time] [--tsv] [--pbcopy]
+      Render a custom report by name.
 ```
