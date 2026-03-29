@@ -269,40 +269,28 @@ async function resolveBudget() {
 
 async function withActual(fn) {
   const actualApi = await getActualApi();
-  if (!process.env.ACTUAL_PASSWORD) {
+  const password = process.env.ACTUAL_PASSWORD;
+  if (!password) {
     fail("ACTUAL_PASSWORD is required.");
   }
 
   await actualApi.init({
     dataDir: DATA_DIR,
     serverURL: SERVER_URL,
-    password: process.env.ACTUAL_PASSWORD,
+    password,
     verbose: false,
   });
 
   try {
     const budget = await resolveBudget();
-    if (budget.id) {
+    if (budget.groupId) {
+      await actualApi.downloadBudget(budget.groupId, { password });
+    } else if (budget.id) {
       await actualApi.loadBudget(budget.id);
-    } else if (budget.cloudFileId) {
-      const result = await actualApi.downloadBudget(budget.cloudFileId);
-      if (result?.error) {
-        if (result.error.reason === "file-exists" && result.error.meta?.id) {
-          await actualApi.loadBudget(result.error.meta.id);
-        } else if (result.error.reason === "not-found") {
-          fail(
-            `Budget ${JSON.stringify(budget.name ?? budget.cloudFileId)} not found. Check the sync id of your budget in the Advanced section of the settings page.`,
-          );
-        } else {
-          fail(
-            `Failed to download budget ${JSON.stringify(budget.name ?? budget.cloudFileId)}.`,
-          );
-        }
-      }
     } else {
-      fail(`Budget ${JSON.stringify(budget.name ?? "(unknown)")} is missing both local id and cloud file id.`);
+      fail(`Budget ${JSON.stringify(budget.name ?? "(unknown)")} is missing both local id and sync id.`);
     }
-    await actualApi.sync();
+
     return await fn();
   } finally {
     try {
