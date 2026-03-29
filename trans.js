@@ -361,10 +361,6 @@ function formatDateRange(start, end) {
   return parts.join(" - ");
 }
 
-function reportHeader(report, start, end) {
-  return [`# ${report.name}`, "", `*${formatDateRange(start, end)}*`, ""];
-}
-
 function monthColumns(start, end) {
   if (!start) {
     return [];
@@ -425,17 +421,42 @@ function applyConditions(transactions, conditionsJson, conditionsOp = "and") {
   );
 }
 
+function makeColumns(labels) {
+  return labels.map((label, index) => ({
+    label,
+    align: index === 0 ? "left" : "right",
+  }));
+}
+
+function makeRow(cells, { bold = false } = {}) {
+  return {
+    cells: cells.map((cell) => String(cell ?? "")),
+    bold,
+  };
+}
+
+function createReportTable(report, start, end, columns, rows) {
+  return {
+    title: report.name,
+    subtitle: formatDateRange(start, end),
+    columns: makeColumns(columns),
+    rows,
+  };
+}
+
 function totalRow(label, deposits, payments, numMonths, bold = false) {
   const total = deposits + payments;
   const average = total / 100 / numMonths;
-  const cells = [
-    bold ? `**${label}**` : label,
-    bold ? `**${formatAmount(deposits)}**` : formatAmount(deposits),
-    bold ? `**${formatAmount(payments)}**` : formatAmount(payments),
-    bold ? `**${formatAmount(total)}**` : formatAmount(total),
-    bold ? `**${formatDecimal(average)}**` : formatDecimal(average),
-  ];
-  return `| ${cells.join(" | ")} |`;
+  return makeRow(
+    [
+      label,
+      formatAmount(deposits),
+      formatAmount(payments),
+      formatAmount(total),
+      formatDecimal(average),
+    ],
+    { bold },
+  );
 }
 
 function renderTotalFlat(transactions, groupBy, descending, report, metadata, numMonths) {
@@ -452,7 +473,7 @@ function renderTotalFlat(transactions, groupBy, descending, report, metadata, nu
     groups.set(key, current);
   }
 
-  const rows = [...groups.entries()]
+  const sortedGroups = [...groups.entries()]
     .filter(([, amounts]) => report.show_empty || amounts.deposits + amounts.payments !== 0)
     .sort((left, right) => {
       const diff =
@@ -465,18 +486,21 @@ function renderTotalFlat(transactions, groupBy, descending, report, metadata, nu
       return left[0].localeCompare(right[0]);
     });
 
-  const lines = ["| " + `${groupBy} | Deposits | Payments | Totals | Average |`, "|---|---:|---:|---:|---:|"];
+  const rows = [];
   let grandDeposits = 0;
   let grandPayments = 0;
 
-  for (const [key, amounts] of rows) {
+  for (const [, amounts] of sortedGroups) {
     grandDeposits += amounts.deposits;
     grandPayments += amounts.payments;
-    lines.push(totalRow(key, amounts.deposits, amounts.payments, numMonths));
   }
 
-  lines.push(totalRow("Totals", grandDeposits, grandPayments, numMonths, true));
-  return lines;
+  for (const [key, amounts] of sortedGroups) {
+    rows.push(totalRow(key, amounts.deposits, amounts.payments, numMonths));
+  }
+
+  rows.push(totalRow("Totals", grandDeposits, grandPayments, numMonths, true));
+  return rows;
 }
 
 function renderTotalByCategory(transactions, report, metadata, numMonths) {
@@ -505,7 +529,7 @@ function renderTotalByCategory(transactions, report, metadata, numMonths) {
     groups.set(info.groupName, group);
   }
 
-  const lines = ["| Category | Deposits | Payments | Totals | Average |", "|---|---:|---:|---:|---:|"];
+  const rows = [];
   let grandDeposits = 0;
   let grandPayments = 0;
 
@@ -529,27 +553,39 @@ function renderTotalByCategory(transactions, report, metadata, numMonths) {
 
     grandDeposits += groupDeposits;
     grandPayments += groupPayments;
-    lines.push(totalRow(groupName, groupDeposits, groupPayments, numMonths, true));
+    rows.push(totalRow(groupName, groupDeposits, groupPayments, numMonths, true));
 
     for (const [categoryName, category] of categories) {
       if (!report.show_empty && category.deposits + category.payments === 0) {
         continue;
       }
-      lines.push(totalRow(categoryName, category.deposits, category.payments, numMonths));
+      rows.push(totalRow(categoryName, category.deposits, category.payments, numMonths));
     }
   }
 
-  lines.push(totalRow("Totals", grandDeposits, grandPayments, numMonths, true));
-  return lines;
+  rows.push(totalRow("Totals", grandDeposits, grandPayments, numMonths, true));
+  return rows;
 }
 
 function renderTotalMode(transactions, groupBy, descending, report, start, end, metadata) {
-  const lines = reportHeader(report, start, end);
   const numMonths = monthColumns(start, end).length || 1;
+  const columns = [groupBy === "Category" ? "Category" : groupBy, "Deposits", "Payments", "Totals", "Average"];
   if (groupBy === "Category") {
-    return [...lines, ...renderTotalByCategory(transactions, report, metadata, numMonths)];
+    return createReportTable(
+      report,
+      start,
+      end,
+      columns,
+      renderTotalByCategory(transactions, report, metadata, numMonths),
+    );
   }
-  return [...lines, ...renderTotalFlat(transactions, groupBy, descending, report, metadata, numMonths)];
+  return createReportTable(
+    report,
+    start,
+    end,
+    columns,
+    renderTotalFlat(transactions, groupBy, descending, report, metadata, numMonths),
+  );
 }
 
 function formatCells(amounts, months) {
@@ -584,10 +620,7 @@ function renderTimeFlat(transactions, groupBy, months, descending, report, metad
       return left.localeCompare(right);
     });
 
-  const lines = [
-    `| ${groupBy} | ${months.map(formatMonthLabel).join(" | ")} | Total |`,
-    `|---${" | ---:".repeat(months.length)} | ---:|`,
-  ];
+  const rows = [];
   const totalsByMonth = new Map();
   let grandTotal = 0;
 
@@ -597,15 +630,16 @@ function renderTimeFlat(transactions, groupBy, months, descending, report, metad
     for (const month of months) {
       totalsByMonth.set(month, (totalsByMonth.get(month) ?? 0) + (grouped.get(key).get(month) ?? 0));
     }
-    lines.push(`| ${key} | ${cells.join(" | ")} | ${formatAmount(total)} |`);
+    rows.push(makeRow([key, ...cells, formatAmount(total)]));
   }
 
-  lines.push(
-    `| **Total** | ${months
-      .map((month) => `**${formatAmount(totalsByMonth.get(month) ?? 0)}**`)
-      .join(" | ")} | **${formatAmount(grandTotal)}** |`,
+  rows.push(
+    makeRow(
+      ["Total", ...months.map((month) => formatAmount(totalsByMonth.get(month) ?? 0)), formatAmount(grandTotal)],
+      { bold: true },
+    ),
   );
-  return lines;
+  return rows;
 }
 
 function renderTimeByCategory(transactions, months, report, metadata) {
@@ -627,10 +661,7 @@ function renderTimeByCategory(transactions, months, report, metadata) {
     groups.set(info.groupName, group);
   }
 
-  const lines = [
-    `| Category | ${months.map(formatMonthLabel).join(" | ")} | Total |`,
-    `|---${" | ---:".repeat(months.length)} | ---:|`,
-  ];
+  const rows = [];
   const grandTotals = new Map();
   let grandTotal = 0;
 
@@ -655,7 +686,7 @@ function renderTimeByCategory(transactions, months, report, metadata) {
       for (const month of months) {
         groupMonths.set(month, (groupMonths.get(month) ?? 0) + (category.months.get(month) ?? 0));
       }
-      categoryRows.push(`| ${categoryName} | ${cells.join(" | ")} | ${formatAmount(total)} |`);
+      categoryRows.push(makeRow([categoryName, ...cells, formatAmount(total)]));
     }
 
     const groupTotal = [...groupMonths.values()].reduce((sum, value) => sum + value, 0);
@@ -663,12 +694,13 @@ function renderTimeByCategory(transactions, months, report, metadata) {
       continue;
     }
 
-    lines.push(
-      `| **${groupName}** | ${months
-        .map((month) => `**${formatAmount(groupMonths.get(month) ?? 0)}**`)
-        .join(" | ")} | **${formatAmount(groupTotal)}** |`,
+    rows.push(
+      makeRow(
+        [groupName, ...months.map((month) => formatAmount(groupMonths.get(month) ?? 0)), formatAmount(groupTotal)],
+        { bold: true },
+      ),
     );
-    lines.push(...categoryRows);
+    rows.push(...categoryRows);
 
     for (const month of months) {
       grandTotals.set(month, (grandTotals.get(month) ?? 0) + (groupMonths.get(month) ?? 0));
@@ -676,12 +708,13 @@ function renderTimeByCategory(transactions, months, report, metadata) {
     grandTotal += groupTotal;
   }
 
-  lines.push(
-    `| **Total** | ${months
-      .map((month) => `**${formatAmount(grandTotals.get(month) ?? 0)}**`)
-      .join(" | ")} | **${formatAmount(grandTotal)}** |`,
+  rows.push(
+    makeRow(
+      ["Total", ...months.map((month) => formatAmount(grandTotals.get(month) ?? 0)), formatAmount(grandTotal)],
+      { bold: true },
+    ),
   );
-  return lines;
+  return rows;
 }
 
 function renderTimeMode(transactions, groupBy, descending, report, start, end, metadata) {
@@ -691,36 +724,40 @@ function renderTimeMode(transactions, groupBy, descending, report, start, end, m
       ? transactions.reduce((min, transaction) => (transaction.date < min ? transaction.date : min), transactions[0].date)
       : formatIsoDate(localToday()));
   const months = monthColumns(effectiveStart, end);
-  const lines = reportHeader(report, start, end);
+  const columns = [groupBy === "Category" ? "Category" : groupBy, ...months.map(formatMonthLabel), "Total"];
   if (groupBy === "Category") {
-    return [...lines, ...renderTimeByCategory(transactions, months, report, metadata)];
+    return createReportTable(
+      report,
+      start,
+      end,
+      columns,
+      renderTimeByCategory(transactions, months, report, metadata),
+    );
   }
-  return [...lines, ...renderTimeFlat(transactions, groupBy, months, descending, report, metadata)];
+  return createReportTable(
+    report,
+    start,
+    end,
+    columns,
+    renderTimeFlat(transactions, groupBy, months, descending, report, metadata),
+  );
 }
 
-function toTsv(lines) {
+function toTsv(reportTable) {
   const output = [];
-  for (const line of lines) {
-    if (!line.trim() || line.startsWith("|--")) {
-      continue;
-    }
-    if (line.startsWith("|")) {
-      const cells = line
-        .split("|")
-        .slice(1, -1)
-        .map((cell) => cell.trim().replaceAll("**", ""));
-      output.push(cells.join("\t"));
-    } else if (line.startsWith("# ")) {
-      output.push(line.slice(2));
-    } else if (line.startsWith("*") && line.endsWith("*")) {
-      output.push(line.slice(1, -1));
-    }
+  if (reportTable.title) {
+    output.push(reportTable.title);
+  }
+  if (reportTable.subtitle) {
+    output.push(reportTable.subtitle);
+  }
+  if (reportTable.columns.length > 0) {
+    output.push(reportTable.columns.map((column) => column.label).join("\t"));
+  }
+  for (const row of reportTable.rows) {
+    output.push(row.cells.join("\t"));
   }
   return output.join("\n");
-}
-
-function stripMarkdownBold(value) {
-  return value.replaceAll("**", "");
 }
 
 function stripAnsi(value) {
@@ -740,69 +777,21 @@ function centerText(value, width = process.stdout.columns ?? 80) {
   return `${" ".repeat(padding)}${value}`;
 }
 
-function renderTerminalCell(value) {
-  if (value.startsWith("**") && value.endsWith("**")) {
-    return `\x1b[1m${stripMarkdownBold(value)}\x1b[22m`;
+function renderTerminalCell(row, value) {
+  if (row.bold) {
+    return `\x1b[1m${value}\x1b[22m`;
   }
-  return stripMarkdownBold(value);
+  return value;
 }
 
-function isNumericCell(value) {
-  return /^-?[\d,]+(?:\.\d+)?$/.test(stripMarkdownBold(value).trim());
-}
-
-function renderCliTable(lines) {
-  const preamble = [];
-  let header = null;
-  const rows = [];
-  let headerDone = false;
-
-  for (const line of lines) {
-    if (!line.trim()) {
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      preamble.push(line.slice(2));
-      continue;
-    }
-    if (line.startsWith("*") && line.endsWith("*")) {
-      preamble.push(line.slice(1, -1));
-      continue;
-    }
-    if (line.startsWith("|--")) {
-      headerDone = true;
-      continue;
-    }
-    if (!line.startsWith("|")) {
-      continue;
-    }
-
-    const cells = line
-      .split("|")
-      .slice(1, -1)
-      .map((cell) => cell.trim());
-
-    if (!headerDone && !header) {
-      header = cells;
-    } else {
-      rows.push(cells);
-    }
+function renderCliTable(reportTable) {
+  if (reportTable.columns.length === 0) {
+    return [reportTable.title, reportTable.subtitle].filter(Boolean).join("\n");
   }
-
-  if (!header) {
-    return lines.join("\n");
-  }
-
-  const colAligns = header.map((_, columnIndex) => {
-    if (columnIndex === 0) {
-      return "left";
-    }
-    return rows.every((row) => isNumericCell(row[columnIndex] ?? "")) ? "right" : "left";
-  });
 
   const table = new Table({
-    head: header.map(stripMarkdownBold),
-    colAligns,
+    head: reportTable.columns.map((column) => column.label),
+    colAligns: reportTable.columns.map((column) => column.align),
     style: { head: [], border: [], compact: true },
     wordWrap: true,
     chars: {
@@ -824,8 +813,8 @@ function renderCliTable(lines) {
     },
   });
 
-  for (const row of rows) {
-    table.push(row.map(renderTerminalCell));
+  for (const row of reportTable.rows) {
+    table.push(row.cells.map((cell) => renderTerminalCell(row, cell)));
   }
 
   const tableLines = table
@@ -836,8 +825,12 @@ function renderCliTable(lines) {
   const headerIndent = headerLine.match(/^\s*/u)?.[0] ?? "";
   const underline = `${headerIndent}${"─".repeat(stripAnsi(headerLine.trimStart()).length)}`;
 
+  const preamble = [reportTable.title, reportTable.subtitle]
+    .filter(Boolean)
+    .map((line) => centerText(line));
+
   return [
-    ...preamble.map((line) => centerText(line)),
+    ...preamble,
     "",
     headerLine,
     underline,
@@ -852,46 +845,29 @@ function htmlEscape(value) {
     .replaceAll(">", "&gt;");
 }
 
-function toHtml(lines) {
+function toHtml(reportTable) {
   const parts = [];
   const rows = [];
-  let headerDone = false;
 
-  for (const line of lines) {
-    if (!line.trim()) {
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      parts.push(`<h3>${htmlEscape(line.slice(2))}</h3>`);
-      continue;
-    }
-    if (line.startsWith("*") && line.endsWith("*")) {
-      parts.push(`<p><em>${htmlEscape(line.slice(1, -1))}</em></p>`);
-      continue;
-    }
-    if (line.startsWith("|--")) {
-      headerDone = true;
-      continue;
-    }
-    if (!line.startsWith("|")) {
-      continue;
-    }
+  if (reportTable.title) {
+    parts.push(`<h3>${htmlEscape(reportTable.title)}</h3>`);
+  }
+  if (reportTable.subtitle) {
+    parts.push(`<p><em>${htmlEscape(reportTable.subtitle)}</em></p>`);
+  }
 
-    const cells = line
-      .split("|")
-      .slice(1, -1)
-      .map((cell) => cell.trim());
+  if (reportTable.columns.length > 0) {
+    rows.push(
+      `<tr>${reportTable.columns
+        .map((column) => `<th>${htmlEscape(column.label)}</th>`)
+        .join("")}</tr>`,
+    );
+  }
 
-    if (!headerDone) {
-      rows.push(`<tr>${cells.map((cell) => `<th>${htmlEscape(cell)}</th>`).join("")}</tr>`);
-      continue;
-    }
-
-    const tds = cells.map((cell) => {
-      const bold = cell.startsWith("**") && cell.endsWith("**");
-      const text = cell.replaceAll("**", "");
-      const align = /^-?[\d,]+(?:\.\d+)?$/.test(text) ? ' align="right"' : "";
-      const inner = bold ? `<b>${htmlEscape(text)}</b>` : htmlEscape(text);
+  for (const row of reportTable.rows) {
+    const tds = row.cells.map((cell, index) => {
+      const align = reportTable.columns[index]?.align === "right" ? ' align="right"' : "";
+      const inner = row.bold ? `<b>${htmlEscape(cell)}</b>` : htmlEscape(cell);
       return `<td${align}>${inner}</td>`;
     });
     rows.push(`<tr>${tds.join("")}</tr>`);
@@ -1331,24 +1307,24 @@ async function commandReport(args) {
     const groupBy = report.group_by || "Category";
     const descending = report.sort_by !== "asc";
     const mode = args.mode ?? report.mode;
-    const lines =
+    const reportTable =
       mode === "time"
         ? renderTimeMode(transactions, groupBy, descending, report, start, end, metadata)
         : renderTotalMode(transactions, groupBy, descending, report, start, end, metadata);
 
     if (args.pbcopy) {
-      console.log(lines.join("\n"));
-      await copyRtf(toHtml(lines));
+      console.log(renderCliTable(reportTable));
+      await copyRtf(toHtml(reportTable));
       console.log("Copied to clipboard.");
       return;
     }
 
     if (args.tsv) {
-      console.log(toTsv(lines));
+      console.log(toTsv(reportTable));
       return;
     }
 
-    console.log(renderCliTable(lines));
+    console.log(renderCliTable(reportTable));
   });
 }
 
