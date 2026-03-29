@@ -267,7 +267,7 @@ async function resolveBudget() {
   return budgets[0];
 }
 
-async function withActual(fn) {
+async function withActual(fn, { loadBudget = true } = {}) {
   const actualApi = await getActualApi();
   const password = process.env.ACTUAL_PASSWORD;
   if (!password) {
@@ -282,16 +282,18 @@ async function withActual(fn) {
   });
 
   try {
-    const budget = await resolveBudget();
-    if (budget.groupId) {
-      await actualApi.downloadBudget(budget.groupId, { password });
-    } else if (budget.id) {
-      await actualApi.loadBudget(budget.id);
-    } else {
-      fail(`Budget ${JSON.stringify(budget.name ?? "(unknown)")} is missing both local id and sync id.`);
+    if (loadBudget) {
+      const budget = await resolveBudget();
+      if (budget.groupId) {
+        await actualApi.downloadBudget(budget.groupId, { password });
+      } else if (budget.id) {
+        await actualApi.loadBudget(budget.id);
+      } else {
+        fail(`Budget ${JSON.stringify(budget.name ?? "(unknown)")} is missing both local id and sync id.`);
+      }
     }
 
-    return await fn();
+    return await fn({ actualApi, password });
   } finally {
     try {
       await actualApi.shutdown();
@@ -362,6 +364,52 @@ function parseMode(value) {
   return value;
 }
 
+function summarizeBudgets(budgets) {
+  const summaries = new Map();
+
+  for (const budget of budgets) {
+    const key = budget.groupId ?? budget.id ?? budget.cloudFileId ?? budget.name ?? JSON.stringify(budget);
+    const existing = summaries.get(key) ?? {
+      name: budget.name ?? "(no name)",
+      groupId: budget.groupId ?? null,
+      cloudFileId: budget.cloudFileId ?? null,
+      localIds: [],
+      states: new Set(),
+    };
+
+    existing.name = budget.name ?? existing.name;
+    existing.groupId ??= budget.groupId ?? null;
+    existing.cloudFileId ??= budget.cloudFileId ?? null;
+    if (budget.id && !existing.localIds.includes(budget.id)) {
+      existing.localIds.push(budget.id);
+    }
+    existing.states.add(budget.state === "remote" ? "remote" : "local");
+    summaries.set(key, existing);
+  }
+
+  return [...summaries.values()].sort((left, right) => {
+    const byName = left.name.localeCompare(right.name);
+    if (byName !== 0) {
+      return byName;
+    }
+    return (left.groupId ?? left.localIds[0] ?? left.cloudFileId ?? "").localeCompare(
+      right.groupId ?? right.localIds[0] ?? right.cloudFileId ?? "",
+    );
+  });
+}
+
+function printBudgets(budgets) {
+  for (const budget of budgets) {
+    const locations = [...budget.states].sort().join(", ");
+    console.log(budget.name);
+    console.log(`  sync id:      ${budget.groupId ?? "(none)"}`);
+    console.log(`  cloud file:   ${budget.cloudFileId ?? "(none)"}`);
+    console.log(`  local id:     ${budget.localIds.join(", ") || "(none)"}`);
+    console.log(`  available in: ${locations}`);
+    console.log("");
+  }
+}
+
 function parseSplitTriplets(entries) {
   if (entries.length === 0 || entries.length % 3 !== 0) {
     throw new InvalidArgumentError(
@@ -407,6 +455,13 @@ function buildProgram() {
         "  ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual",
       ].join("\n"),
     );
+
+  program
+    .command("budgets")
+    .description("List budgets and their sync ids.")
+    .action(async () => {
+      await commandBudgets();
+    });
 
   program
     .command("find")
@@ -485,6 +540,17 @@ async function commandFind({ payee, txnDate }) {
       console.log("");
     }
   });
+}
+
+async function commandBudgets() {
+  await withActual(async ({ actualApi }) => {
+    const budgets = summarizeBudgets(await actualApi.getBudgets());
+    if (budgets.length === 0) {
+      console.log("No budgets found.");
+      return;
+    }
+    printBudgets(budgets);
+  }, { loadBudget: false });
 }
 
 async function resolveSplitTarget(args, metadata) {

@@ -82,6 +82,9 @@ Cleaning transactions before importing them:
 Usage: node trans.js <command> [options]
 
 Commands:
+  budgets
+      List budgets and their sync ids.
+
   find <payee> <txn-date>
       Find transactions by exact payee name and ISO date (YYYY-MM-DD).
 
