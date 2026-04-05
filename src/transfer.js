@@ -1,4 +1,4 @@
-import { formatAmount } from "./reporting.js";
+import { formatAmount, formatBudgetDate } from "./reporting.js";
 import { extractQueryData, normalizeTransaction } from "./transaction-data.js";
 
 function fail(message) {
@@ -11,33 +11,6 @@ function truthy(value) {
 
 function accountLabel(accountId, metadata) {
   return metadata.accountsById.get(accountId)?.name ?? "Unknown";
-}
-
-export function formatBudgetDate(isoDate, dateFormat = "YYYY-MM-DD") {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
-    fail(`Invalid ISO date ${JSON.stringify(isoDate)}.`);
-  }
-
-  const [year, month, day] = isoDate.split("-");
-  const twoDigitYear = year.slice(-2);
-  const monthNumber = String(Number(month));
-  const dayNumber = String(Number(day));
-  const tokenValues = {
-    yyyy: year,
-    yy: twoDigitYear,
-    YYYY: year,
-    YY: twoDigitYear,
-    MM: month,
-    M: monthNumber,
-    dd: day,
-    d: dayNumber,
-    DD: day,
-  };
-
-  return String(dateFormat).replace(
-    /yyyy|YYYY|yy|YY|MM|M|dd|DD|d|D/g,
-    (token) => tokenValues[token] ?? token,
-  );
 }
 
 function pairSortKey(pair, metadata) {

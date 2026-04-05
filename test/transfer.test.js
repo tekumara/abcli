@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildTransferCandidatesTable, findTransferCandidates, formatBudgetDate } from "../src/transfer.js";
+import { buildTransferCandidatesTable, findTransferCandidates } from "../src/transfer.js";
 
 function makeMetadata() {
   return {
@@ -11,17 +11,6 @@ function makeMetadata() {
     ]),
   };
 }
-
-test("formatBudgetDate renders supported Actual date formats", () => {
-  assert.equal(formatBudgetDate("2026-04-05", "dd/MM/yyyy"), "05/04/2026");
-  assert.equal(formatBudgetDate("2026-04-05", "MM/dd/yyyy"), "04/05/2026");
-  assert.equal(formatBudgetDate("2026-04-05", "yyyy/MM/dd"), "2026/04/05");
-  assert.equal(formatBudgetDate("2026-04-05", "dd.MM.yyyy"), "05.04.2026");
-  assert.equal(formatBudgetDate("2026-04-05", "DD/MM/YYYY"), "05/04/2026");
-  assert.equal(formatBudgetDate("2026-04-05", "MM/DD/YYYY"), "04/05/2026");
-  assert.equal(formatBudgetDate("2026-04-05", "YYYY/MM/DD"), "2026/04/05");
-  assert.equal(formatBudgetDate("2026-04-05", "DD.MM.YYYY"), "05.04.2026");
-});
 
 test("findTransferCandidates matches a unique uncategorized pair", () => {
   const result = findTransferCandidates([

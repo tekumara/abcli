@@ -71,6 +71,31 @@ function formatRangeLabel(isoDate) {
   return RANGE_LABEL_FORMATTER.format(parseIsoDate(isoDate));
 }
 
+export function formatBudgetDate(isoDate, dateFormat = "YYYY-MM-DD") {
+  parseIsoDate(isoDate);
+
+  const [year, month, day] = isoDate.split("-");
+  const twoDigitYear = year.slice(-2);
+  const monthNumber = String(Number(month));
+  const dayNumber = String(Number(day));
+  const tokenValues = {
+    yyyy: year,
+    yy: twoDigitYear,
+    YYYY: year,
+    YY: twoDigitYear,
+    MM: month,
+    M: monthNumber,
+    dd: day,
+    d: dayNumber,
+    DD: day,
+  };
+
+  return String(dateFormat).replace(
+    /yyyy|YYYY|yy|YY|MM|M|dd|DD|d|D/g,
+    (token) => tokenValues[token] ?? token,
+  );
+}
+
 export function formatAmount(cents) {
   return AMOUNT_FORMATTER.format(cents / 100);
 }
