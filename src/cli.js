@@ -4,6 +4,7 @@ import { Command, InvalidArgumentError } from "commander";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { resolveImportAccount } from "./import-account.js";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -605,7 +606,8 @@ function buildProgram() {
         "",
         "Account matching:",
         "  <account> may be an Actual account id or account name.",
-        "  Matching prefers exact id, then exact name, then unique case-insensitive name.",
+        "  Matching prefers exact id, then exact name, then unique case-insensitive name,",
+        "  then a unique case-insensitive substring match.",
         "",
         "Date parsing:",
         "  Ambiguous QIF dates use the budget's dateFormat preference when available.",
@@ -635,7 +637,8 @@ function buildProgram() {
         "",
         "Account matching:",
         "  <account> may be an Actual account id or account name.",
-        "  Matching prefers exact id, then exact name, then unique case-insensitive name.",
+        "  Matching prefers exact id, then exact name, then unique case-insensitive name,",
+        "  then a unique case-insensitive substring match.",
       ].join("\n"),
     )
     .action(async (account, csvPath, options) => {
@@ -861,47 +864,6 @@ async function commandReport(args) {
 
     console.log(renderCliTable(reportTable));
   });
-}
-
-function resolveImportAccount(accounts, identifier) {
-  const rawIdentifier = String(identifier ?? "").trim();
-  if (!rawIdentifier) {
-    fail("Account identifier is required.");
-  }
-
-  const directIdMatch = accounts.find((account) => account.id === rawIdentifier);
-  if (directIdMatch) {
-    return directIdMatch;
-  }
-
-  const exactNameMatches = accounts.filter((account) => account.name === rawIdentifier);
-  if (exactNameMatches.length === 1) {
-    return exactNameMatches[0];
-  }
-  if (exactNameMatches.length > 1) {
-    fail(
-      `Account name ${JSON.stringify(rawIdentifier)} is ambiguous. Matching ids: ${exactNameMatches
-        .map((account) => account.id)
-        .join(", ")}`,
-    );
-  }
-
-  const foldedIdentifier = rawIdentifier.toLowerCase();
-  const foldedNameMatches = accounts.filter(
-    (account) => account.name?.toLowerCase() === foldedIdentifier,
-  );
-  if (foldedNameMatches.length === 1) {
-    return foldedNameMatches[0];
-  }
-  if (foldedNameMatches.length > 1) {
-    fail(
-      `Account name ${JSON.stringify(rawIdentifier)} is ambiguous. Matching ids: ${foldedNameMatches
-        .map((account) => account.id)
-        .join(", ")}`,
-    );
-  }
-
-  fail(`Account ${JSON.stringify(rawIdentifier)} not found.`);
 }
 
 async function commandStGeorgeImport(args) {

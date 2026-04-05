@@ -51,7 +51,7 @@ Import the CSV into an account:
 abctl st-george-import <account> path/to/st-george.csv
 ```
 
-`<account>` may be either the Actual account id or the account name. If the name is ambiguous, the command fails and asks you to use the id.
+`<account>` may be either the Actual account id or account name. Matching prefers exact id, then exact name, then unique case-insensitive name, then a unique case-insensitive substring match. If the match is ambiguous, the command fails and asks you to use the id.
 
 ## QIF Import
 
@@ -77,3 +77,5 @@ Optional flags:
 
 - `--import-notes` keeps the QIF memo field as Actual notes.
 - `--swap-payee-and-memo` uses the QIF memo field as the payee before optional note import.
+
+`<account>` may be either the Actual account id or account name. Matching prefers exact id, then exact name, then unique case-insensitive name, then a unique case-insensitive substring match. If the match is ambiguous, the command fails and asks you to use the id.
