@@ -9,6 +9,10 @@
     "src/*.js",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tekumara/abctl.git"
+  },
   "dependencies": {
     "@actual-app/api": "^26.3.0",
     "cli-table3": "^0.6.5",

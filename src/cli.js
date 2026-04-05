@@ -225,11 +225,11 @@ async function resolveBudget() {
   const budgets = await actualApi.getBudgets();
   if (budgets.length === 0) {
     fail(
-      "No budgets found. Set ACTUAL_BUDGET_SYNC_ID or create a cloud file in Actual first.",
+      "No budgets found. Set ACTUAL_SYNC_ID or create a cloud file in Actual first.",
     );
   }
 
-  const requestedBudget = process.env.ACTUAL_BUDGET_SYNC_ID?.trim();
+  const requestedBudget = process.env.ACTUAL_SYNC_ID?.trim();
   if (requestedBudget) {
     const directMatch = budgets.find(
       (budget) =>
@@ -511,7 +511,7 @@ function buildProgram() {
         "",
         "Environment:",
         "  ACTUAL_PASSWORD        Required.",
-        "  ACTUAL_BUDGET_SYNC_ID  Optional. Budget name, groupId, or cloudFileId. Defaults to the first available budget.",
+        "  ACTUAL_SYNC_ID         Optional. Budget name, groupId, or cloudFileId. Defaults to the first available budget.",
         "  ACTUAL_SERVER_URL      Optional. Defaults to http://localhost:5007",
         "  ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual",
       ].join("\n"),
