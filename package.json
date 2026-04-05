@@ -2,6 +2,11 @@
   "name": "abctl",
   "version": "0.0.0",
   "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "smoke:st-george": "ABCTL_RUN_SMOKE_TEST=1 node --test test/st-george.smoke.test.js",
+    "smoke:st-george:write": "ABCTL_RUN_SMOKE_TEST=1 ABCTL_SMOKE_WRITE=1 node --test test/st-george.smoke.test.js"
+  },
   "bin": {
     "abctl": "src/cli.js"
   },

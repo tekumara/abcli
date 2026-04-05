@@ -18,6 +18,8 @@ Commands:
   find <payee> <txn-date>       Find transactions by exact payee name and ISO date (YYYY-MM-DD).
   split [options] <entries...>  Split a transaction into sub-transactions.
   report [options] <name>       Render a custom report by name.
+  st-george-import [options] <account> <csv-path>
+                                Import a St.George CSV into an Actual account.
   help [command]                display help for command
 
 Environment:
@@ -26,3 +28,25 @@ Environment:
   ACTUAL_SERVER_URL      Optional. Defaults to http://localhost:5007
   ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual
 ```
+
+## St.George Import
+
+Preview the mapped `ImportTransactionEntity` objects:
+
+```bash
+abctl st-george-import <account> path/to/st-george.csv --json
+```
+
+Preview Actual's reconciliation result without writing:
+
+```bash
+abctl st-george-import <account> path/to/st-george.csv --dry-run
+```
+
+Import the CSV into an account:
+
+```bash
+abctl st-george-import <account> path/to/st-george.csv
+```
+
+`<account>` may be either the Actual account id or the account name. If the name is ambiguous, the command fails and asks you to use the id.

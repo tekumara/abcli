@@ -3,7 +3,7 @@
 import { Command, InvalidArgumentError } from "commander";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,6 +16,7 @@ import {
   payeeName,
   resolveDateRange,
 } from "./reporting.js";
+import { parseStGeorgeCsvToImportTransactions } from "./st-george.js";
 import { renderCliTable, toHtml, toTsv } from "./table-rendering.js";
 
 const execFile = promisify(execFileCallback);
@@ -575,6 +576,31 @@ function buildProgram() {
       });
     });
 
+  program
+    .command("st-george-import")
+    .description("Import a St.George CSV into an Actual account.")
+    .argument("<account>")
+    .argument("<csv-path>")
+    .option("--dry-run", "preview reconciliation without writing transactions")
+    .option("--json", "print mapped ImportTransactionEntity objects and exit")
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Account matching:",
+        "  <account> may be an Actual account id or account name.",
+        "  Matching prefers exact id, then exact name, then unique case-insensitive name.",
+      ].join("\n"),
+    )
+    .action(async (account, csvPath, options) => {
+      await commandStGeorgeImport({
+        account,
+        csvPath,
+        dryRun: options.dryRun ?? false,
+        json: options.json ?? false,
+      });
+    });
+
   return program;
 }
 
@@ -788,6 +814,88 @@ async function commandReport(args) {
     }
 
     console.log(renderCliTable(reportTable));
+  });
+}
+
+function resolveImportAccount(accounts, identifier) {
+  const rawIdentifier = String(identifier ?? "").trim();
+  if (!rawIdentifier) {
+    fail("Account identifier is required.");
+  }
+
+  const directIdMatch = accounts.find((account) => account.id === rawIdentifier);
+  if (directIdMatch) {
+    return directIdMatch;
+  }
+
+  const exactNameMatches = accounts.filter((account) => account.name === rawIdentifier);
+  if (exactNameMatches.length === 1) {
+    return exactNameMatches[0];
+  }
+  if (exactNameMatches.length > 1) {
+    fail(
+      `Account name ${JSON.stringify(rawIdentifier)} is ambiguous. Matching ids: ${exactNameMatches
+        .map((account) => account.id)
+        .join(", ")}`,
+    );
+  }
+
+  const foldedIdentifier = rawIdentifier.toLowerCase();
+  const foldedNameMatches = accounts.filter(
+    (account) => account.name?.toLowerCase() === foldedIdentifier,
+  );
+  if (foldedNameMatches.length === 1) {
+    return foldedNameMatches[0];
+  }
+  if (foldedNameMatches.length > 1) {
+    fail(
+      `Account name ${JSON.stringify(rawIdentifier)} is ambiguous. Matching ids: ${foldedNameMatches
+        .map((account) => account.id)
+        .join(", ")}`,
+    );
+  }
+
+  fail(`Account ${JSON.stringify(rawIdentifier)} not found.`);
+}
+
+async function commandStGeorgeImport(args) {
+  await withActual(async ({ actualApi }) => {
+    const accounts = await actualApi.getAccounts();
+    const account = resolveImportAccount(accounts, args.account);
+    const csvText = await readFile(args.csvPath, "utf8");
+    const transactions = parseStGeorgeCsvToImportTransactions(csvText, {
+      accountId: account.id,
+    });
+
+    if (args.json) {
+      console.log(JSON.stringify(transactions, null, 2));
+      return;
+    }
+
+    const result = await actualApi.importTransactions(account.id, transactions, {
+      defaultCleared: true,
+      dryRun: args.dryRun,
+    });
+
+    if (!args.dryRun) {
+      await actualApi.sync();
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          account: {
+            id: account.id,
+            name: account.name ?? "?",
+          },
+          mapped: transactions.length,
+          dryRun: args.dryRun,
+          result,
+        },
+        null,
+        2,
+      ),
+    );
   });
 }
 

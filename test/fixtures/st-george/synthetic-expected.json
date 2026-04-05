@@ -1,0 +1,109 @@
+[
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-05",
+    "amount": -623,
+    "payee_name": "COFFEE SHOP",
+    "imported_payee": "Visa Purchase 20Dec08:47 COFFEE SHOP",
+    "imported_id": "stgeorge|2026-04-05|Visa Purchase 20Dec08:47 COFFEE SHOP|6.23||1000.00",
+    "notes": "Visa Purchase"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-06",
+    "amount": -1234,
+    "payee_name": "TOKYO RAMEN",
+    "imported_payee": "Visa Purchase O/Seas 21Dec09:10 TOKYO RAMEN",
+    "imported_id": "stgeorge|2026-04-06|Visa Purchase O/Seas 21Dec09:10 TOKYO RAMEN|12.34||987.66",
+    "notes": "Visa Purchase O/Seas"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-07",
+    "amount": 123456,
+    "payee_name": "PAYROLL",
+    "imported_payee": "Internet Deposit 22Dec10:11 PAYROLL",
+    "imported_id": "stgeorge|2026-04-07|Internet Deposit 22Dec10:11 PAYROLL||1234.56|2222.22",
+    "notes": "Internet Deposit"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-08",
+    "amount": -80000,
+    "payee_name": "RENT",
+    "imported_payee": "Osko Withdrawal 23Dec11:12 RENT",
+    "imported_id": "stgeorge|2026-04-08|Osko Withdrawal 23Dec11:12 RENT|800.00||1422.22",
+    "notes": "Osko Withdrawal"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-09",
+    "amount": -5000,
+    "payee_name": "CASH",
+    "imported_payee": "Atm Withdrawal -Wbc 24Dec12:13 CASH",
+    "imported_id": "stgeorge|2026-04-09|Atm Withdrawal -Wbc 24Dec12:13 CASH|50.00||1372.22",
+    "notes": "Atm Withdrawal -Wbc"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-10",
+    "amount": 0,
+    "payee_name": "Loan A/C Fee",
+    "imported_payee": "Loan A/C Fee",
+    "imported_id": "stgeorge|2026-04-10|Loan A/C Fee|.00||1372.22"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-11",
+    "amount": 550,
+    "payee_name": "REFUND",
+    "imported_payee": "Eftpos Credit 25Dec13:14 REFUND",
+    "imported_id": "stgeorge|2026-04-11|Eftpos Credit 25Dec13:14 REFUND||5.50|1377.72",
+    "notes": "Eftpos Credit"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-12",
+    "amount": -2000,
+    "payee_name": "CASH",
+    "imported_payee": "Cardless Atm Withdrawal 26Dec14:15 CASH",
+    "imported_id": "stgeorge|2026-04-12|Cardless Atm Withdrawal 26Dec14:15 CASH|20.00||1357.72",
+    "notes": "Cardless Atm Withdrawal"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-13",
+    "amount": -15000,
+    "payee_name": "ELECTRICITY",
+    "imported_payee": "Tfr Wdl BPAY Internet 27Dec15:16 ELECTRICITY",
+    "imported_id": "stgeorge|2026-04-13|Tfr Wdl BPAY Internet 27Dec15:16 ELECTRICITY|150.00||1207.72",
+    "notes": "Tfr Wdl BPAY Internet"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-14",
+    "amount": 4410,
+    "payee_name": "HOTEL REFUND",
+    "imported_payee": "Visa Credit Overseas 28Dec16:17 HOTEL REFUND",
+    "imported_id": "stgeorge|2026-04-14|Visa Credit Overseas 28Dec16:17 HOTEL REFUND||44.10|1251.82",
+    "notes": "Visa Credit Overseas"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-15",
+    "amount": 20000,
+    "payee_name": "RENT SHARE",
+    "imported_payee": "Sct Deposit 29Dec17:18 RENT SHARE",
+    "imported_id": "stgeorge|2026-04-15|Sct Deposit 29Dec17:18 RENT SHARE||200.00|1451.82",
+    "notes": "Sct Deposit"
+  },
+  {
+    "account": "acct-smoke",
+    "date": "2026-04-16",
+    "amount": -999,
+    "payee_name": "DELI, CBD",
+    "imported_payee": "Visa Purchase 30Dec18:19 DELI, CBD",
+    "imported_id": "stgeorge|2026-04-16|Visa Purchase 30Dec18:19 DELI, CBD|9.99||1441.83",
+    "notes": "Visa Purchase"
+  }
+]
