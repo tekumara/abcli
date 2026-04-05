@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# Clean CSV exported from UI (nb: set the UI to order from oldest to latest).
+
+if [ "$1" ]; then
+    outfile="${2:-${1}.actual.csv}"
+    # Redirect stdout for the rest of the script to the output file.
+    exec > "$outfile"
+fi
+
+sql="
+    select '' as Num, strftime(src.Date, '%d/%m/%Y') as Date,
+    -- format by stripping out leading transaction type and datetime (eg: 20Dec08:47)
+    -- and using it in Notes below
+    regexp_replace(
+        src.Description, '^(Visa Purchase( O/Seas)?|Visa Credit( Overseas)?|Osko Withdrawal|Osko Deposit|Sct Deposit|Eftpos Debit|Eftpos Credit|Tfr Wdl BPAY Internet|(Cardless )?Atm Withdrawal( -Wbc)?|Internet Deposit|Internet Withdrawal)\s+\S+\s',''
+    ) as Payee,
+    regexp_extract(
+        src.Description, '^(Visa Purchase( O/Seas)?|Visa Credit( Overseas)?|Osko Withdrawal|Osko Deposit|Sct Deposit|Eftpos Debit|Eftpos Credit|Tfr Wdl BPAY Internet|(Cardless )?Atm Withdrawal( -Wbc)?|Internet Deposit|Internet Withdrawal)'
+    ) as Notes,
+    '' as Category,'' as S,
+    src.Debit,
+    src.Credit,
+    src.Balance
+    -- null_padding fills missing SubCategory trailing column(s) with NULL.
+    from read_csv('/dev/stdin', null_padding=true) as src;
+"
+
+duckdb -csv -c "$sql" < "${1:-/dev/stdin}"

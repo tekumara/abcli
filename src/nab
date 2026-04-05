@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# strip trailing 11 digit number from end of payee, eg: SAFEWAY 3188             NSW  03211034065
+# strip card digits and date from start of payee, eg: V5457 31/03
+# strip leading crap for GENERAL INS, myki, MHF
+# strip EFTPOS, eg: EFTPOS 05/02 09:31
+perl -i'*.bak' -pe 's/\s+[0-9]{11}\b//;s/V5457 [0-9\/]{5} //;s/^P.*GENERAL INS HOME/PGENERAL INS HOME/;s/^P.*myki-tnfr.*/Pmyki-tnfr/;s/^P.*MHF/PMHF/;s/EFTPOS \d\d\/\d\d \d\d:\d\d(?:\s+)?//' "$1"
