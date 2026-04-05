@@ -422,7 +422,7 @@ function printBudgets(budgets) {
   }
 }
 
-function buildAccountsTable(accounts) {
+function buildAccountsTable(accounts, latestDates = new Map()) {
   const rows = accounts.map((account) => {
     const suffixes = [];
     if (truthy(account.offbudget)) {
@@ -438,6 +438,7 @@ function buildAccountsTable(accounts) {
         suffixes.length > 0
           ? `${account.name} (${suffixes.join(", ")})`
           : account.name,
+      latestDate: latestDates.get(account.id) ?? "",
     };
   });
 
@@ -458,14 +459,15 @@ function buildAccountsTable(accounts) {
     columns: [
       { label: "Account", align: "left" },
       { label: "Balance", align: "right" },
+      { label: "Last Transaction", align: "left" },
     ],
     rows: [
       ...rows.map((account) => ({
-        cells: [account.displayName, formatAmount(account.balance)],
+        cells: [account.displayName, formatAmount(account.balance), account.latestDate],
       })),
       {
         bold: true,
-        cells: ["Total", formatAmount(total)],
+        cells: ["Total", formatAmount(total), ""],
       },
     ],
   };
@@ -623,6 +625,24 @@ async function commandBudgets() {
   }, { loadBudget: false });
 }
 
+async function fetchLatestTransactionDateByAccount() {
+  const actualApi = await getActualApi();
+  const results = extractQueryData(
+    await actualApi.runQuery(
+      actualApi.q("transactions").filter({ tombstone: false }).select(["account", "date"]),
+    ),
+  );
+  const latestByAccount = new Map();
+  for (const { account, date } of results) {
+    const normalized = normalizeDateValue(date);
+    const current = latestByAccount.get(account);
+    if (!current || normalized > current) {
+      latestByAccount.set(account, normalized);
+    }
+  }
+  return latestByAccount;
+}
+
 async function commandAccounts() {
   await withActual(async ({ actualApi }) => {
     const accounts = await actualApi.getAccounts();
@@ -631,14 +651,17 @@ async function commandAccounts() {
       return;
     }
 
-    const rows = await Promise.all(
-      accounts.map(async (account) => ({
-        ...account,
-        balance: await actualApi.getAccountBalance(account.id),
-      })),
-    );
+    const [rows, latestDates] = await Promise.all([
+      Promise.all(
+        accounts.map(async (account) => ({
+          ...account,
+          balance: await actualApi.getAccountBalance(account.id),
+        })),
+      ),
+      fetchLatestTransactionDateByAccount(),
+    ]);
 
-    console.log(renderCliTable(buildAccountsTable(rows)));
+    console.log(renderCliTable(buildAccountsTable(rows, latestDates)));
   });
 }
 
