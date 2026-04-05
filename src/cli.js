@@ -20,6 +20,8 @@ import {
 import { normalizeParsedQifTransactions } from "./qif.js";
 import { parseStGeorgeCsvToImportTransactions } from "./st-george.js";
 import { renderCliTable, toHtml, toTsv } from "./table-rendering.js";
+import { commandUncategorized } from "./uncategorized.js";
+import { extractQueryData, normalizeTransaction, toFiniteNumber } from "./transaction-data.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -58,11 +60,6 @@ function truthy(value) {
   return value === true || value === 1 || value === "1";
 }
 
-function toFiniteNumber(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
 function parseIsoDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     fail(`Invalid date ${JSON.stringify(value)}. Expected YYYY-MM-DD.`);
@@ -79,24 +76,6 @@ function parseIsoDate(value) {
   return parsed;
 }
 
-function normalizeDateValue(value) {
-  if (typeof value === "string") {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return value;
-    }
-    if (/^\d{8}$/.test(value)) {
-      return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
-    }
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    const digits = String(value);
-    if (digits.length === 8) {
-      return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
-    }
-  }
-  fail(`Unsupported transaction date value: ${JSON.stringify(value)}`);
-}
-
 function parseAmountInput(value) {
   const raw = String(value).trim();
   const match = raw.match(/^(-?)(\d+)(?:\.(\d{1,2}))?$/);
@@ -106,21 +85,6 @@ function parseAmountInput(value) {
   const [, sign, whole, fraction = ""] = match;
   const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
   return sign ? -cents : cents;
-}
-
-function normalizeTransaction(rawTxn) {
-  return {
-    id: rawTxn.id,
-    accountId: rawTxn.account_id ?? rawTxn.account ?? rawTxn.acct ?? null,
-    categoryId: rawTxn.category_id ?? rawTxn.category ?? null,
-    payeeId: rawTxn.payee_id ?? rawTxn.payee ?? null,
-    notes: rawTxn.notes ?? "",
-    amount: toFiniteNumber(rawTxn.amount, 0),
-    date: normalizeDateValue(rawTxn.date),
-    subtransactions: Array.isArray(rawTxn.subtransactions)
-      ? rawTxn.subtransactions.map(normalizeTransaction)
-      : [],
-  };
 }
 
 function normalizeReport(rawReport) {
@@ -133,16 +97,6 @@ function normalizeReport(rawReport) {
     show_uncategorized: truthy(rawReport.show_uncategorized),
     tombstone: truthy(rawReport.tombstone),
   };
-}
-
-function extractQueryData(result) {
-  if (Array.isArray(result)) {
-    return result;
-  }
-  if (Array.isArray(result?.data)) {
-    return result.data;
-  }
-  return [];
 }
 
 function buildMetadata({ accounts, categories, categoryGroups, payees }) {
@@ -544,6 +498,13 @@ function buildProgram() {
     .description("List accounts and their current balances.")
     .action(async () => {
       await commandAccounts();
+    });
+
+  program
+    .command("uncategorized")
+    .description("List uncategorized transactions across all accounts.")
+    .action(async () => {
+      await commandUncategorized({ fetchMetadata, renderCliTable, withActual });
     });
 
   program

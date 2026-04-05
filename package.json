@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "smoke:uncategorized": "ABCTL_RUN_SMOKE_TEST=1 node --test test/uncategorized.smoke.test.js",
     "smoke:qif": "ABCTL_RUN_SMOKE_TEST=1 node --test test/qif.smoke.test.js",
     "smoke:qif:write": "ABCTL_RUN_SMOKE_TEST=1 ABCTL_SMOKE_WRITE=1 node --test test/qif.smoke.test.js",
     "smoke:st-george": "ABCTL_RUN_SMOKE_TEST=1 node --test test/st-george.smoke.test.js",
