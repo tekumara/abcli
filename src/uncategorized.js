@@ -1,7 +1,7 @@
-import { accountName, formatAmount, payeeName } from "./reporting.js";
+import { accountName, formatAmount, formatBudgetDate, payeeName } from "./reporting.js";
 import { extractQueryData, normalizeTransaction } from "./transaction-data.js";
 
-export async function buildUncategorizedTransactionsTable(actualApi, metadata) {
+export async function buildUncategorizedTransactionsTable(actualApi, metadata, { dateFormat } = {}) {
   const query = actualApi
     .q("transactions")
     .filter({
@@ -54,7 +54,7 @@ export async function buildUncategorizedTransactionsTable(actualApi, metadata) {
     ],
     rows: uncategorized.map((transaction) => ({
       cells: [
-        transaction.date,
+        formatBudgetDate(transaction.date, dateFormat),
         accountName(transaction, metadata),
         payeeName(transaction, metadata),
         transaction.notes ?? "",
@@ -67,8 +67,13 @@ export async function buildUncategorizedTransactionsTable(actualApi, metadata) {
 
 export async function commandUncategorized({ fetchMetadata, renderCliTable, withActual }) {
   await withActual(async ({ actualApi }) => {
-    const metadata = await fetchMetadata();
-    const table = await buildUncategorizedTransactionsTable(actualApi, metadata);
+    const [metadata, syncedPrefs] = await Promise.all([
+      fetchMetadata(),
+      actualApi.internal.send("preferences/get"),
+    ]);
+    const table = await buildUncategorizedTransactionsTable(actualApi, metadata, {
+      dateFormat: syncedPrefs?.dateFormat ?? null,
+    });
 
     if (table.rows.length === 0) {
       console.log("No uncategorized transactions found.");

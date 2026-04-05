@@ -73,6 +73,10 @@ function formatRangeLabel(isoDate) {
 
 export function formatBudgetDate(isoDate, dateFormat = "YYYY-MM-DD") {
   parseIsoDate(isoDate);
+  const normalizedDateFormat =
+    typeof dateFormat === "string" && dateFormat.trim() !== ""
+      ? dateFormat
+      : "YYYY-MM-DD";
 
   const [year, month, day] = isoDate.split("-");
   const twoDigitYear = year.slice(-2);
@@ -90,7 +94,7 @@ export function formatBudgetDate(isoDate, dateFormat = "YYYY-MM-DD") {
     DD: day,
   };
 
-  return String(dateFormat).replace(
+  return normalizedDateFormat.replace(
     /yyyy|YYYY|yy|YY|MM|M|dd|DD|d|D/g,
     (token) => tokenValues[token] ?? token,
   );

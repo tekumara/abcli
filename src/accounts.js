@@ -1,4 +1,4 @@
-import { formatAmount } from "./reporting.js";
+import { formatAmount, formatBudgetDate } from "./reporting.js";
 import { extractQueryData, normalizeDateValue } from "./transaction-data.js";
 
 function truthy(value) {
@@ -24,7 +24,11 @@ export function buildLatestTransactionDateByAccount(transactions) {
   return latestByAccount;
 }
 
-export function buildAccountsTable(accounts, latestDates = new Map()) {
+function normalizeDateFormatPreference(rawValue) {
+  return typeof rawValue === "string" ? rawValue : rawValue?.dateFormat ?? null;
+}
+
+export function buildAccountsTable(accounts, latestDates = new Map(), { dateFormat } = {}) {
   const rows = accounts.map((account) => {
     const suffixes = [];
     if (truthy(account.offbudget)) {
@@ -40,7 +44,10 @@ export function buildAccountsTable(accounts, latestDates = new Map()) {
         suffixes.length > 0
           ? `${account.name} (${suffixes.join(", ")})`
           : account.name,
-      latestDate: latestDates.get(account.id) ?? "",
+      latestDate:
+        latestDates.get(account.id) == null
+          ? ""
+          : formatBudgetDate(latestDates.get(account.id), dateFormat),
     };
   });
 
@@ -93,7 +100,7 @@ export async function commandAccounts({ renderCliTable, withActual }) {
       return;
     }
 
-    const [rows, latestDates] = await Promise.all([
+    const [rows, latestDates, syncedPrefs] = await Promise.all([
       Promise.all(
         accounts.map(async (account) => ({
           ...account,
@@ -101,8 +108,15 @@ export async function commandAccounts({ renderCliTable, withActual }) {
         })),
       ),
       fetchLatestTransactionDateByAccount(actualApi),
+      actualApi.internal.send("preferences/get"),
     ]);
 
-    console.log(renderCliTable(buildAccountsTable(rows, latestDates)));
+    console.log(
+      renderCliTable(
+        buildAccountsTable(rows, latestDates, {
+          dateFormat: normalizeDateFormatPreference(syncedPrefs),
+        }),
+      ),
+    );
   });
 }

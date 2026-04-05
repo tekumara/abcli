@@ -15,6 +15,7 @@ import {
   categoryName,
   filterReportTransactions,
   formatAmount,
+  formatBudgetDate,
   payeeName,
   resolveDateRange,
 } from "./reporting.js";
@@ -328,10 +329,10 @@ async function fetchPreferenceValue(preferenceId) {
   return preferences[0]?.value ?? null;
 }
 
-function printTransaction(transaction, metadata) {
+function printTransaction(transaction, metadata, { dateFormat } = {}) {
   console.log(`  id:       ${transaction.id}`);
   console.log(`  account:  ${accountName(transaction, metadata)}`);
-  console.log(`  date:     ${transaction.date}`);
+  console.log(`  date:     ${formatBudgetDate(transaction.date, dateFormat)}`);
   console.log(`  payee:    ${payeeName(transaction, metadata)}`);
   console.log(`  notes:    ${transaction.notes ?? ""}`);
   console.log(`  category: ${categoryName(transaction, metadata)}`);
@@ -595,7 +596,10 @@ function findGroupedTransaction(transactions, transactionId) {
 async function commandFind({ payee, txnDate }) {
   parseIsoDate(txnDate);
   await withActual(async () => {
-    const metadata = await fetchMetadata();
+    const [metadata, dateFormat] = await Promise.all([
+      fetchMetadata(),
+      fetchPreferenceValue("dateFormat"),
+    ]);
     const transactions = await fetchTransactions({ start: txnDate, end: txnDate, splitMode: "inline" });
     const matches = transactions.filter(
       (transaction) => transaction.date === txnDate && payeeName(transaction, metadata) === payee,
@@ -607,7 +611,7 @@ async function commandFind({ payee, txnDate }) {
     }
 
     for (const transaction of matches) {
-      printTransaction(transaction, metadata);
+      printTransaction(transaction, metadata, { dateFormat });
       console.log("");
     }
   });
@@ -663,11 +667,14 @@ async function commandSplit(args) {
 
   await withActual(async () => {
     const actualApi = await getActualApi();
-    const metadata = await fetchMetadata();
+    const [metadata, dateFormat] = await Promise.all([
+      fetchMetadata(),
+      fetchPreferenceValue("dateFormat"),
+    ]);
     const transaction = await resolveSplitTarget(args, metadata);
 
     console.log("Splitting transaction:");
-    printTransaction(transaction, metadata);
+    printTransaction(transaction, metadata, { dateFormat });
 
     const splitTotal = args.splitTriplets.reduce((sum, split) => sum + split.amount, 0);
     if (splitTotal !== transaction.amount) {
