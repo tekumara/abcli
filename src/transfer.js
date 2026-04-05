@@ -13,6 +13,33 @@ function accountLabel(accountId, metadata) {
   return metadata.accountsById.get(accountId)?.name ?? "Unknown";
 }
 
+export function formatBudgetDate(isoDate, dateFormat = "YYYY-MM-DD") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    fail(`Invalid ISO date ${JSON.stringify(isoDate)}.`);
+  }
+
+  const [year, month, day] = isoDate.split("-");
+  const twoDigitYear = year.slice(-2);
+  const monthNumber = String(Number(month));
+  const dayNumber = String(Number(day));
+  const tokenValues = {
+    yyyy: year,
+    yy: twoDigitYear,
+    YYYY: year,
+    YY: twoDigitYear,
+    MM: month,
+    M: monthNumber,
+    dd: day,
+    d: dayNumber,
+    DD: day,
+  };
+
+  return String(dateFormat).replace(
+    /yyyy|YYYY|yy|YY|MM|M|dd|DD|d|D/g,
+    (token) => tokenValues[token] ?? token,
+  );
+}
+
 function pairSortKey(pair, metadata) {
   return [
     pair.from.date,
@@ -122,6 +149,14 @@ function send(actualApi, name, args) {
   return actualApi.internal.send(name, args);
 }
 
+async function fetchBudgetDateFormat(actualApi) {
+  const syncedPrefs = await send(actualApi, "preferences/get");
+  if (syncedPrefs && typeof syncedPrefs === "object") {
+    return syncedPrefs.dateFormat ?? null;
+  }
+  return null;
+}
+
 async function fetchUncategorizedTransactions(actualApi) {
   const query = actualApi
     .q("transactions")
@@ -204,7 +239,7 @@ async function buildTransferUpdates(actualApi, matches) {
   });
 }
 
-export function buildTransferCandidatesTable(matches, metadata) {
+export function buildTransferCandidatesTable(matches, metadata, { dateFormat } = {}) {
   const rows = [...matches].sort((left, right) =>
     pairSortKey(left, metadata).localeCompare(pairSortKey(right, metadata)),
   );
@@ -216,18 +251,14 @@ export function buildTransferCandidatesTable(matches, metadata) {
       { label: "Date", align: "left" },
       { label: "Amount", align: "right" },
       { label: "From Account", align: "left" },
-      { label: "From ID", align: "left" },
       { label: "To Account", align: "left" },
-      { label: "To ID", align: "left" },
     ],
     rows: rows.map((pair) => ({
       cells: [
-        pair.from.date,
+        formatBudgetDate(pair.from.date, dateFormat),
         formatAmount(Math.abs(pair.from.amount)),
         accountLabel(pair.from.accountId, metadata),
-        pair.from.id,
         accountLabel(pair.to.accountId, metadata),
-        pair.to.id,
       ],
     })),
   };
@@ -236,6 +267,7 @@ export function buildTransferCandidatesTable(matches, metadata) {
 export async function executeMakeTransfer(actualApi, metadata, { dryRun = false } = {}) {
   const uncategorizedTransactions = await fetchUncategorizedTransactions(actualApi);
   const { matches, ambiguousGroups } = findTransferCandidates(uncategorizedTransactions);
+  const dateFormat = dryRun ? await fetchBudgetDateFormat(actualApi) : null;
 
   if (!dryRun && matches.length > 0) {
     const updated = await buildTransferUpdates(actualApi, matches);
@@ -249,7 +281,7 @@ export async function executeMakeTransfer(actualApi, metadata, { dryRun = false 
     ambiguousGroups,
     dryRun,
     matches,
-    table: buildTransferCandidatesTable(matches, metadata),
+    table: buildTransferCandidatesTable(matches, metadata, { dateFormat }),
     uncategorizedCount: uncategorizedTransactions.length,
   };
 }

@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { findTransferCandidates } from "../src/transfer.js";
+import { buildTransferCandidatesTable, findTransferCandidates, formatBudgetDate } from "../src/transfer.js";
+
+function makeMetadata() {
+  return {
+    accountsById: new Map([
+      ["checking", { id: "checking", name: "Checking" }],
+      ["savings", { id: "savings", name: "Savings" }],
+    ]),
+  };
+}
+
+test("formatBudgetDate renders supported Actual date formats", () => {
+  assert.equal(formatBudgetDate("2026-04-05", "dd/MM/yyyy"), "05/04/2026");
+  assert.equal(formatBudgetDate("2026-04-05", "MM/dd/yyyy"), "04/05/2026");
+  assert.equal(formatBudgetDate("2026-04-05", "yyyy/MM/dd"), "2026/04/05");
+  assert.equal(formatBudgetDate("2026-04-05", "dd.MM.yyyy"), "05.04.2026");
+  assert.equal(formatBudgetDate("2026-04-05", "DD/MM/YYYY"), "05/04/2026");
+  assert.equal(formatBudgetDate("2026-04-05", "MM/DD/YYYY"), "04/05/2026");
+  assert.equal(formatBudgetDate("2026-04-05", "YYYY/MM/DD"), "2026/04/05");
+  assert.equal(formatBudgetDate("2026-04-05", "DD.MM.YYYY"), "05.04.2026");
+});
 
 test("findTransferCandidates matches a unique uncategorized pair", () => {
   const result = findTransferCandidates([
@@ -64,5 +84,38 @@ test("findTransferCandidates skips ambiguous date and amount groups", () => {
   assert.deepEqual(
     result.ambiguousGroups[0].map((transaction) => transaction.id),
     ["inflow", "outflow-a", "outflow-b"],
+  );
+});
+
+test("buildTransferCandidatesTable uses budget date format for display", () => {
+  const table = buildTransferCandidatesTable(
+    [
+      {
+        from: {
+          accountId: "checking",
+          amount: -7800,
+          date: "2026-04-05",
+          id: "outflow",
+        },
+        to: {
+          accountId: "savings",
+          amount: 7800,
+          date: "2026-04-05",
+          id: "inflow",
+        },
+      },
+    ],
+    makeMetadata(),
+    { dateFormat: "DD/MM/YYYY" },
+  );
+
+  assert.equal(table.rows[0].cells[0], "05/04/2026");
+  assert.deepEqual(
+    table.columns.map((column) => column.label),
+    ["Date", "Amount", "From Account", "To Account"],
+  );
+  assert.deepEqual(
+    table.rows[0].cells,
+    ["05/04/2026", "78.00", "Checking", "Savings"],
   );
 });
