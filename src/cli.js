@@ -4,6 +4,7 @@ import { Command, InvalidArgumentError } from "commander";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { commandAccounts } from "./accounts.js";
 import { resolveImportAccount } from "./import-account.js";
 import os from "node:os";
 import path from "node:path";
@@ -390,57 +391,6 @@ function printBudgets(budgets) {
   }
 }
 
-function buildAccountsTable(accounts, latestDates = new Map()) {
-  const rows = accounts.map((account) => {
-    const suffixes = [];
-    if (truthy(account.offbudget)) {
-      suffixes.push("off budget");
-    }
-    if (truthy(account.closed)) {
-      suffixes.push("closed");
-    }
-
-    return {
-      ...account,
-      displayName:
-        suffixes.length > 0
-          ? `${account.name} (${suffixes.join(", ")})`
-          : account.name,
-      latestDate: latestDates.get(account.id) ?? "",
-    };
-  });
-
-  rows.sort((left, right) => {
-    const leftRank = Number(truthy(left.closed)) * 2 + Number(truthy(left.offbudget));
-    const rightRank = Number(truthy(right.closed)) * 2 + Number(truthy(right.offbudget));
-    if (leftRank !== rightRank) {
-      return leftRank - rightRank;
-    }
-    return left.displayName.localeCompare(right.displayName);
-  });
-
-  const total = rows.reduce((sum, account) => sum + account.balance, 0);
-
-  return {
-    title: "Accounts",
-    subtitle: "Current balances",
-    columns: [
-      { label: "Account", align: "left" },
-      { label: "Balance", align: "right" },
-      { label: "Last Transaction", align: "left" },
-    ],
-    rows: [
-      ...rows.map((account) => ({
-        cells: [account.displayName, formatAmount(account.balance), account.latestDate],
-      })),
-      {
-        bold: true,
-        cells: ["Total", formatAmount(total), ""],
-      },
-    ],
-  };
-}
-
 function parseSplitTriplets(entries) {
   if (entries.length === 0 || entries.length % 3 !== 0) {
     throw new InvalidArgumentError(
@@ -498,7 +448,7 @@ function buildProgram() {
     .command("accounts")
     .description("List accounts and their current balances.")
     .action(async () => {
-      await commandAccounts();
+      await commandAccounts({ renderCliTable, withActual });
     });
 
   program
@@ -674,46 +624,6 @@ async function commandBudgets() {
     }
     printBudgets(budgets);
   }, { loadBudget: false });
-}
-
-async function fetchLatestTransactionDateByAccount() {
-  const actualApi = await getActualApi();
-  const results = extractQueryData(
-    await actualApi.runQuery(
-      actualApi.q("transactions").filter({ tombstone: false }).select(["account", "date"]),
-    ),
-  );
-  const latestByAccount = new Map();
-  for (const { account, date } of results) {
-    const normalized = normalizeDateValue(date);
-    const current = latestByAccount.get(account);
-    if (!current || normalized > current) {
-      latestByAccount.set(account, normalized);
-    }
-  }
-  return latestByAccount;
-}
-
-async function commandAccounts() {
-  await withActual(async ({ actualApi }) => {
-    const accounts = await actualApi.getAccounts();
-    if (accounts.length === 0) {
-      console.log("No accounts found.");
-      return;
-    }
-
-    const [rows, latestDates] = await Promise.all([
-      Promise.all(
-        accounts.map(async (account) => ({
-          ...account,
-          balance: await actualApi.getAccountBalance(account.id),
-        })),
-      ),
-      fetchLatestTransactionDateByAccount(),
-    ]);
-
-    console.log(renderCliTable(buildAccountsTable(rows, latestDates)));
-  });
 }
 
 async function resolveSplitTarget(args, metadata) {
