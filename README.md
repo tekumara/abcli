@@ -16,6 +16,8 @@ Commands:
   budgets                       List budgets and their sync ids.
   accounts                      List accounts and their current balances.
   uncategorized                 List uncategorized transactions across all accounts.
+  make-transfer|transfer [options]
+                                Find uncategorized transfer pairs and link them.
   find <payee> <txn-date>       Find transactions by exact payee name and ISO date (YYYY-MM-DD).
   split [options] <entries...>  Split a transaction into sub-transactions.
   report [options] <name>       Render a custom report by name.
@@ -31,6 +33,22 @@ Environment:
   ACTUAL_SERVER_URL      Optional. Defaults to http://localhost:5007
   ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual
 ```
+
+## Make Transfer
+
+Preview uncategorized transfer candidates without writing:
+
+```bash
+abctl make-transfer --dry-run
+```
+
+Link all unambiguous uncategorized transfer pairs:
+
+```bash
+abctl make-transfer
+```
+
+The command only links pairs when there is exactly one uncategorized inflow and one uncategorized outflow with the same date and absolute amount in two different accounts. Ambiguous groups are reported and skipped.
 
 ## St.George Import
 

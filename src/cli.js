@@ -20,6 +20,7 @@ import {
 import { normalizeParsedQifTransactions } from "./qif.js";
 import { parseStGeorgeCsvToImportTransactions } from "./st-george.js";
 import { renderCliTable, toHtml, toTsv } from "./table-rendering.js";
+import { commandMakeTransfer } from "./transfer.js";
 import { commandUncategorized } from "./uncategorized.js";
 import { extractQueryData, normalizeTransaction, toFiniteNumber } from "./transaction-data.js";
 
@@ -505,6 +506,20 @@ function buildProgram() {
     .description("List uncategorized transactions across all accounts.")
     .action(async () => {
       await commandUncategorized({ fetchMetadata, renderCliTable, withActual });
+    });
+
+  program
+    .command("make-transfer")
+    .alias("transfer")
+    .description("Find uncategorized transfer pairs and link them.")
+    .option("--dry-run", "list transfer candidates without updating transactions")
+    .action(async (options) => {
+      await commandMakeTransfer({
+        dryRun: options.dryRun ?? false,
+        fetchMetadata,
+        renderCliTable,
+        withActual,
+      });
     });
 
   program
