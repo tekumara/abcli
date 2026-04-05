@@ -5,7 +5,7 @@ CLI for working with [Actual Budget](actual.md).
 ## Usage
 
 ```bash
-Usage: abcli [options] [command]
+Usage: abctl [options] [command]
 
 Actual budget helper commands.
 

@@ -1,10 +1,14 @@
 {
-  "name": "actual-scripts",
-  "version": "1.0.0",
+  "name": "abctl",
+  "version": "0.0.0",
   "type": "module",
   "bin": {
-    "abcli": "./src/cli.js"
+    "abctl": "src/cli.js"
   },
+  "files": [
+    "src/*.js",
+    "README.md"
+  ],
   "dependencies": {
     "@actual-app/api": "^26.3.0",
     "cli-table3": "^0.6.5",

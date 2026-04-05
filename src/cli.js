@@ -502,7 +502,7 @@ function buildProgram() {
   const program = new Command();
 
   program
-    .name("abcli")
+    .name("abctl")
     .description("Actual budget helper commands.")
     .showHelpAfterError()
     .addHelpText(
