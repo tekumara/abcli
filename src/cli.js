@@ -962,11 +962,13 @@ async function commandQifImport(args) {
       fail(parseResult.errors.map((error) => error.message).join(" "));
     }
 
-    const transactions = normalizeParsedQifTransactions(parseResult?.transactions ?? [], {
-      accountId: account.id,
-      dateFormat,
-      amountToInteger: actualApi.internal.amountToInteger,
-    });
+    const transactions = normalizeParsedQifTransactions(
+      parseResult?.transactions ?? [],
+      {
+        dateFormat,
+        amountToInteger: actualApi.internal.amountToInteger,
+      },
+    );
 
     if (args.json) {
       console.log(JSON.stringify(transactions, null, 2));

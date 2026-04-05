@@ -55,7 +55,7 @@ abctl st-george-import <account> path/to/st-george.csv
 
 ## QIF Import
 
-Preview the normalized `ImportTransactionEntity` objects:
+Preview the parsed transactions returned by Actual:
 
 ```bash
 abctl qif-import <account> path/to/file.qif --json
@@ -77,12 +77,3 @@ Optional flags:
 
 - `--import-notes` keeps the QIF memo field as Actual notes.
 - `--swap-payee-and-memo` uses the QIF memo field as the payee before optional note import.
-
-Ambiguous QIF dates use the budget's `dateFormat` preference when available.
-
-Smoke tests:
-
-```bash
-npm run smoke:qif
-npm run smoke:qif:write
-```

@@ -87,18 +87,13 @@ export function parseQifDate(value, { dateFormat } = {}) {
 
 export function normalizeParsedQifTransactions(
   transactions,
-  { accountId, dateFormat = null, amountToInteger } = {},
+  { dateFormat = null, amountToInteger } = {},
 ) {
-  const normalizedAccountId = String(accountId ?? "").trim();
-  if (!normalizedAccountId) {
-    fail("accountId is required to build Actual import transactions.");
+  if (!Array.isArray(transactions)) {
+    fail("Parsed QIF transactions must be an array.");
   }
   if (typeof amountToInteger !== "function") {
     fail("amountToInteger is required to build Actual import transactions.");
-  }
-
-  if (!Array.isArray(transactions)) {
-    fail("Parsed QIF transactions must be an array.");
   }
 
   return transactions.map((transaction, index) => {
@@ -107,27 +102,14 @@ export function normalizeParsedQifTransactions(
     }
 
     const amount = Number(transaction.amount);
-
     if (!Number.isFinite(amount)) {
       fail(`Invalid QIF amount ${JSON.stringify(transaction.amount)}.`);
     }
 
-    const normalizedTransaction = {
-      account: normalizedAccountId,
+    return {
+      ...transaction,
       date: parseQifDate(transaction.date, { dateFormat }),
       amount: amountToInteger(amount),
     };
-
-    if ("payee_name" in transaction && transaction.payee_name != null) {
-      normalizedTransaction.payee_name = transaction.payee_name;
-    }
-    if ("imported_payee" in transaction && transaction.imported_payee != null) {
-      normalizedTransaction.imported_payee = transaction.imported_payee;
-    }
-    if ("notes" in transaction && transaction.notes != null) {
-      normalizedTransaction.notes = transaction.notes;
-    }
-
-    return normalizedTransaction;
   });
 }

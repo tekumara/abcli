@@ -111,11 +111,13 @@ async function runSmokeCase(t, { write }) {
   });
   assert.deepEqual(parseResult.errors, []);
 
-  const transactions = normalizeParsedQifTransactions(parseResult.transactions ?? [], {
-    accountId,
-    dateFormat: "DD/MM/YYYY",
-    amountToInteger: actualApi.internal.amountToInteger,
-  });
+  const transactions = normalizeParsedQifTransactions(
+    parseResult.transactions ?? [],
+    {
+      dateFormat: "DD/MM/YYYY",
+      amountToInteger: actualApi.internal.amountToInteger,
+    },
+  );
 
   const result = await actualApi.internal.send("transactions-import", {
     accountId,
@@ -154,7 +156,6 @@ async function runSmokeCase(t, { write }) {
     );
     const expectedView = sortTransactions(
       transactions.map((transaction) => ({
-        account: transaction.account,
         date: transaction.date,
         amount: transaction.amount,
         payee_name: transaction.payee_name ?? null,
@@ -168,7 +169,7 @@ async function runSmokeCase(t, { write }) {
       const actualTransaction = actualView[index];
       const expectedTransaction = expectedView[index];
 
-      assert.equal(actualTransaction.account, expectedTransaction.account);
+      assert.equal(actualTransaction.account, accountId);
       assert.equal(actualTransaction.date, expectedTransaction.date);
       assert.equal(actualTransaction.amount, expectedTransaction.amount);
       assert.equal(actualTransaction.imported_payee, expectedTransaction.imported_payee);
