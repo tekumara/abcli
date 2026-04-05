@@ -16,6 +16,7 @@ import {
   payeeName,
   resolveDateRange,
 } from "./reporting.js";
+import { normalizeParsedQifTransactions } from "./qif.js";
 import { parseStGeorgeCsvToImportTransactions } from "./st-george.js";
 import { renderCliTable, toHtml, toTsv } from "./table-rendering.js";
 
@@ -360,6 +361,16 @@ async function fetchReports() {
   return reports.map(normalizeReport);
 }
 
+async function fetchPreferenceValue(preferenceId) {
+  const actualApi = await getActualApi();
+  const preferences = extractQueryData(
+    await actualApi.runQuery(
+      actualApi.q("preferences").filter({ id: preferenceId }).select(["id", "value"]),
+    ),
+  );
+  return preferences[0]?.value ?? null;
+}
+
 function printTransaction(transaction, metadata) {
   console.log(`  id:       ${transaction.id}`);
   console.log(`  account:  ${accountName(transaction, metadata)}`);
@@ -573,6 +584,41 @@ function buildProgram() {
         mode: options.mode ?? null,
         tsv: options.tsv ?? false,
         pbcopy: options.pbcopy ?? false,
+      });
+    });
+
+  program
+    .command("qif-import")
+    .description("Import a QIF file into an Actual account.")
+    .argument("<account>")
+    .argument("<qif-path>")
+    .option("--dry-run", "preview reconciliation without writing transactions")
+    .option("--json", "print mapped ImportTransactionEntity objects and exit")
+    .option("--import-notes", "import QIF memo fields into transaction notes")
+    .option(
+      "--swap-payee-and-memo",
+      "use QIF memo values as payees before optional note import",
+    )
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Account matching:",
+        "  <account> may be an Actual account id or account name.",
+        "  Matching prefers exact id, then exact name, then unique case-insensitive name.",
+        "",
+        "Date parsing:",
+        "  Ambiguous QIF dates use the budget's dateFormat preference when available.",
+      ].join("\n"),
+    )
+    .action(async (account, qifPath, options) => {
+      await commandQifImport({
+        account,
+        qifPath,
+        dryRun: options.dryRun ?? false,
+        json: options.json ?? false,
+        importNotes: options.importNotes ?? false,
+        swapPayeeAndMemo: options.swapPayeeAndMemo ?? false,
       });
     });
 
@@ -875,6 +921,63 @@ async function commandStGeorgeImport(args) {
     const result = await actualApi.importTransactions(account.id, transactions, {
       defaultCleared: true,
       dryRun: args.dryRun,
+    });
+
+    if (!args.dryRun) {
+      await actualApi.sync();
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          account: {
+            id: account.id,
+            name: account.name ?? "?",
+          },
+          mapped: transactions.length,
+          dryRun: args.dryRun,
+          result,
+        },
+        null,
+        2,
+      ),
+    );
+  });
+}
+
+async function commandQifImport(args) {
+  await withActual(async ({ actualApi }) => {
+    const accounts = await actualApi.getAccounts();
+    const account = resolveImportAccount(accounts, args.account);
+    const dateFormat = await fetchPreferenceValue("dateFormat");
+    const parseResult = await actualApi.internal.send("transactions-parse-file", {
+      filepath: args.qifPath,
+      options: {
+        importNotes: args.importNotes || args.swapPayeeAndMemo,
+        swapPayeeAndMemo: args.swapPayeeAndMemo,
+      },
+    });
+
+    if (parseResult?.errors?.length > 0) {
+      fail(parseResult.errors.map((error) => error.message).join(" "));
+    }
+
+    const transactions = normalizeParsedQifTransactions(parseResult?.transactions ?? [], {
+      accountId: account.id,
+      dateFormat,
+      amountToInteger: actualApi.internal.amountToInteger,
+    });
+
+    if (args.json) {
+      console.log(JSON.stringify(transactions, null, 2));
+      return;
+    }
+
+    const result = await actualApi.internal.send("transactions-import", {
+      accountId: account.id,
+      transactions,
+      isPreview: args.dryRun,
+      opts: { reimportDeleted: false },
     });
 
     if (!args.dryRun) {
