@@ -8,6 +8,7 @@ import { commandAccounts } from "./accounts.js";
 import { resolveImportAccount } from "./import-account.js";
 import os from "node:os";
 import path from "node:path";
+import { addSplitCommand } from "./split.js";
 import { promisify } from "node:util";
 import {
   accountName,
@@ -77,17 +78,6 @@ function parseIsoDate(value) {
     fail(`Invalid date ${JSON.stringify(value)}.`);
   }
   return parsed;
-}
-
-function parseAmountInput(value) {
-  const raw = String(value).trim();
-  const match = raw.match(/^(-?)(\d+)(?:\.(\d{1,2}))?$/);
-  if (!match) {
-    fail(`Invalid amount ${JSON.stringify(value)}.`);
-  }
-  const [, sign, whole, fraction = ""] = match;
-  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
-  return sign ? -cents : cents;
 }
 
 function normalizeReport(rawReport) {
@@ -392,33 +382,6 @@ function printBudgets(budgets) {
   }
 }
 
-function parseSplitTriplets(entries) {
-  if (entries.length === 0 || entries.length % 3 !== 0) {
-    throw new InvalidArgumentError(
-      "Split entries must be provided as repeated triplets: <notes> <category> <amount>.",
-    );
-  }
-
-  const splitTriplets = [];
-  for (let index = 0; index < entries.length; index += 3) {
-    splitTriplets.push({
-      notes: entries[index],
-      categoryName: entries[index + 1],
-      amount: parseAmountInput(entries[index + 2]),
-    });
-  }
-  return splitTriplets;
-}
-
-function validateSplitSelector(options) {
-  if (!options.transactionId && !(options.payee && options.txnDate)) {
-    fail("Provide --transaction-id or both --payee and --txn-date.");
-  }
-  if (options.transactionId && (options.payee || options.txnDate)) {
-    fail("Use either --transaction-id or --payee/--txn-date, not both.");
-  }
-}
-
 function buildProgram() {
   const program = new Command();
 
@@ -482,22 +445,13 @@ function buildProgram() {
       await commandFind({ payee, txnDate });
     });
 
-  program
-    .command("split")
-    .description("Split a transaction into sub-transactions.")
-    .option("--transaction-id <id>")
-    .option("--payee <payee>")
-    .option("--txn-date <date>")
-    .argument("<entries...>")
-    .action(async (entries, options) => {
-      validateSplitSelector(options);
-      await commandSplit({
-        transactionId: options.transactionId ?? null,
-        payee: options.payee ?? null,
-        txnDate: options.txnDate ?? null,
-        splitTriplets: parseSplitTriplets(entries),
-      });
-    });
+  addSplitCommand(program, {
+    fetchMetadata,
+    fetchPreferenceValue,
+    fetchTransactions,
+    printTransaction,
+    withActual,
+  });
 
   program
     .command("report")
@@ -580,19 +534,6 @@ function buildProgram() {
   return program;
 }
 
-function findGroupedTransaction(transactions, transactionId) {
-  for (const transaction of transactions) {
-    if (transaction.id === transactionId) {
-      return { transaction, parent: null };
-    }
-    const child = transaction.subtransactions.find((subtransaction) => subtransaction.id === transactionId);
-    if (child) {
-      return { transaction: child, parent: transaction };
-    }
-  }
-  return null;
-}
-
 async function commandFind({ payee, txnDate }) {
   parseIsoDate(txnDate);
   await withActual(async () => {
@@ -628,86 +569,6 @@ async function commandBudgets() {
     }
     printBudgets(budgets);
   }, { loadBudget: false });
-}
-
-async function resolveSplitTarget(args, metadata) {
-  if (args.transactionId) {
-    const transactions = await fetchTransactions({ splitMode: "grouped" });
-    const match = findGroupedTransaction(transactions, args.transactionId);
-    if (!match) {
-      fail(`Transaction ${JSON.stringify(args.transactionId)} not found.`);
-    }
-    if (match.parent) {
-      fail("Cannot split a sub-transaction directly. Use the parent transaction id instead.");
-    }
-    return match.transaction;
-  }
-
-  parseIsoDate(args.txnDate);
-  const transactions = await fetchTransactions({ start: args.txnDate, end: args.txnDate, splitMode: "inline" });
-  const matches = transactions.filter(
-    (transaction) => transaction.date === args.txnDate && payeeName(transaction, metadata) === args.payee,
-  );
-
-  if (matches.length === 0) {
-    fail(`No transaction found for payee=${JSON.stringify(args.payee)} on ${args.txnDate}.`);
-  }
-  if (matches.length > 1) {
-    fail(
-      `Found ${matches.length} transactions for payee=${JSON.stringify(args.payee)} on ${args.txnDate}, use --transaction-id instead.`,
-    );
-  }
-  return matches[0];
-}
-
-async function commandSplit(args) {
-  if (args.txnDate) {
-    parseIsoDate(args.txnDate);
-  }
-
-  await withActual(async () => {
-    const actualApi = await getActualApi();
-    const [metadata, dateFormat] = await Promise.all([
-      fetchMetadata(),
-      fetchPreferenceValue("dateFormat"),
-    ]);
-    const transaction = await resolveSplitTarget(args, metadata);
-
-    console.log("Splitting transaction:");
-    printTransaction(transaction, metadata, { dateFormat });
-
-    const splitTotal = args.splitTriplets.reduce((sum, split) => sum + split.amount, 0);
-    if (splitTotal !== transaction.amount) {
-      console.log(
-        `\n  WARNING: split total (${formatAmount(splitTotal)}) != transaction amount (${formatAmount(transaction.amount)})`,
-      );
-    }
-
-    const categoryNameToId = new Map(
-      [...metadata.categoriesById.values()].map((category) => [category.name, category.id]),
-    );
-
-    for (const split of args.splitTriplets) {
-      if (!categoryNameToId.has(split.categoryName)) {
-        fail(`Category ${JSON.stringify(split.categoryName)} not found.`);
-      }
-    }
-
-    await actualApi.updateTransaction(transaction.id, {
-      category: null,
-      subtransactions: args.splitTriplets.map((split) => ({
-        notes: split.notes,
-        category: categoryNameToId.get(split.categoryName),
-        amount: split.amount,
-      })),
-    });
-    await actualApi.sync();
-
-    for (const split of args.splitTriplets) {
-      console.log(`  + ${split.notes}, ${split.categoryName}, ${formatAmount(split.amount)}`);
-    }
-    console.log("Done.");
-  });
 }
 
 async function commandReport(args) {

@@ -34,6 +34,18 @@ Environment:
   ACTUAL_DATA_DIR        Optional. Defaults to /tmp/actual
 ```
 
+For `split`, express `<entries...>` as repeated triplets:
+
+```bash
+<notes> <category> <amount> [<notes> <category> <amount> ...]
+```
+
+Example:
+
+```bash
+abctl split --transaction-id abc123 "Groceries run" "Food" -45.60 "Petrol" "Transport" -30
+```
+
 ## Make Transfer
 
 Preview uncategorized transfer candidates without writing:
@@ -49,6 +61,22 @@ abctl make-transfer
 ```
 
 The command only links pairs when there is exactly one uncategorized inflow and one uncategorized outflow with the same date and absolute amount in two different accounts. Ambiguous groups are reported and skipped.
+
+## Split
+
+Split by transaction id:
+
+```bash
+abctl split --transaction-id abc123 "Groceries run" "Food" -45.60 "Petrol" "Transport" -30
+```
+
+Split by exact payee and ISO date:
+
+```bash
+abctl split --payee "Example Store" --txn-date 2026-04-05 "Groceries run" "Food" -45.60
+```
+
+Each split entry is a repeated `<notes> <category> <amount>` triplet. Quote notes or category names when they contain spaces.
 
 ## St.George Import
 
