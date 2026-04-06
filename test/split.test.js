@@ -9,6 +9,7 @@ import {
   commandSplit,
   findGroupedTransaction,
   parseSplitEntries,
+  resolveEffectiveSplitEntries,
   resolveSplitTarget,
   validateSplitSelector,
 } from "../src/split.js";
@@ -207,6 +208,115 @@ test("commandSplit updates the matching transaction with mapped subtransactions"
   assert.ok(logs.includes("Done."));
 });
 
+test("resolveEffectiveSplitEntries appends a remainder split using the parent category", () => {
+  const result = resolveEffectiveSplitEntries(
+    {
+      amount: 165000,
+      categoryId: "cat-rent",
+    },
+    [
+      { notes: "62", categoryName: "Agent fees", amount: -9000 },
+      { notes: "", categoryName: "Rental income", amount: 170000 },
+    ],
+    {
+      categoriesById: new Map([
+        ["cat-rent", { id: "cat-rent", name: "Rental income" }],
+      ]),
+    },
+    { addRemainderSplit: true },
+  );
+
+  assert.deepEqual(result, [
+    { notes: "62", categoryName: "Agent fees", amount: -9000 },
+    { notes: "", categoryName: "Rental income", amount: 170000 },
+    { notes: "", categoryName: "Rental income", amount: 4000 },
+  ]);
+});
+
+test("resolveEffectiveSplitEntries rejects remainder mode when the parent has no category", () => {
+  assert.throws(
+    () =>
+      resolveEffectiveSplitEntries(
+        {
+          amount: 165000,
+          categoryId: null,
+        },
+        [{ notes: "62", categoryName: "Agent fees", amount: -9000 }],
+        { categoriesById: new Map() },
+        { addRemainderSplit: true },
+      ),
+    /Cannot add a remainder split because the parent transaction has no category\./,
+  );
+});
+
+test("commandSplit can append a remainder split using the parent transaction category", async () => {
+  const calls = [];
+
+  await commandSplit(
+    {
+      transactionId: "txn-1",
+      payee: null,
+      txnDate: null,
+      addRemainderSplit: true,
+      splitEntries: [
+        { notes: "62", categoryName: "Agent fees", amount: -9000 },
+        { notes: "", categoryName: "Rental income", amount: 170000 },
+      ],
+    },
+    {
+      fetchMetadata: async () => ({
+        categoriesById: new Map([
+          ["cat-agent", { id: "cat-agent", name: "Agent fees" }],
+          ["cat-rent", { id: "cat-rent", name: "Rental income" }],
+        ]),
+        payeesById: new Map(),
+        accountsById: new Map(),
+      }),
+      fetchPreferenceValue: async () => "DD/MM/YYYY",
+      fetchTransactions: async () => [
+        {
+          id: "txn-1",
+          accountId: "acct-1",
+          payeeId: "payee-1",
+          categoryId: "cat-rent",
+          notes: "Original note",
+          amount: 165000,
+          date: "2025-04-15",
+          subtransactions: [],
+        },
+      ],
+      printTransaction: () => {},
+      withActual: async (fn) =>
+        fn({
+          actualApi: {
+            internal: {
+              send: async (name, payload) => {
+                calls.push({ name, payload });
+              },
+            },
+            sync: async () => {},
+          },
+        }),
+    },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, "transactions-batch-update");
+  assert.equal(calls[0].payload.added.length, 3);
+  assert.deepEqual(
+    calls[0].payload.added.map((split) => ({
+      amount: split.amount,
+      category: split.category,
+      notes: split.notes,
+    })),
+    [
+      { amount: -9000, category: "cat-agent", notes: "62" },
+      { amount: 170000, category: "cat-rent", notes: "" },
+      { amount: 4000, category: "cat-rent", notes: "" },
+    ],
+  );
+});
+
 test("buildSplitUpdateFields includes the parent account on split children", () => {
   const payload = buildSplitUpdateFields(
     {
@@ -325,4 +435,5 @@ test("addSplitCommand documents how entries are expressed", () => {
   splitCommand.outputHelp();
   assert.match(help, /Entry format:/);
   assert.match(help, /<notes> <category> <amount>/);
+  assert.match(help, /--add-remainder-split/);
 });

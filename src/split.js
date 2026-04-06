@@ -134,7 +134,14 @@ export async function commandSplit(
     console.log("Splitting transaction:");
     printTransaction(transaction, metadata, { dateFormat });
 
-    const splitTotal = args.splitEntries.reduce((sum, split) => sum + split.amount, 0);
+    const effectiveSplitEntries = resolveEffectiveSplitEntries(
+      transaction,
+      args.splitEntries,
+      metadata,
+      { addRemainderSplit: args.addRemainderSplit ?? false },
+    );
+
+    const splitTotal = effectiveSplitEntries.reduce((sum, split) => sum + split.amount, 0);
     if (splitTotal !== transaction.amount) {
       console.log(
         `\n  WARNING: split total (${formatAmount(splitTotal)}) != transaction amount (${formatAmount(transaction.amount)})`,
@@ -145,19 +152,19 @@ export async function commandSplit(
       [...metadata.categoriesById.values()].map((category) => [category.name, category.id]),
     );
 
-    for (const split of args.splitEntries) {
+    for (const split of effectiveSplitEntries) {
       if (!categoryNameToId.has(split.categoryName)) {
         fail(`Category ${JSON.stringify(split.categoryName)} not found.`);
       }
     }
 
-    const fields = buildSplitUpdateFields(transaction, args.splitEntries, {
+    const fields = buildSplitUpdateFields(transaction, effectiveSplitEntries, {
       categoryNameToId,
     });
     await applySplitUpdate(actualApi, transaction, fields);
     await actualApi.sync();
 
-    for (const split of args.splitEntries) {
+    for (const split of effectiveSplitEntries) {
       console.log(`  + ${split.notes}, ${split.categoryName}, ${formatAmount(split.amount)}`);
     }
     console.log("Done.");
@@ -204,6 +211,38 @@ export function buildSplitUpdateFields(transaction, splitEntries, { categoryName
   };
 }
 
+export function resolveEffectiveSplitEntries(
+  transaction,
+  splitEntries,
+  metadata,
+  { addRemainderSplit = false } = {},
+) {
+  const splitTotal = splitEntries.reduce((sum, split) => sum + split.amount, 0);
+  const remainder = transaction.amount - splitTotal;
+
+  if (!addRemainderSplit || remainder === 0) {
+    return splitEntries;
+  }
+
+  if (!transaction.categoryId) {
+    fail("Cannot add a remainder split because the parent transaction has no category.");
+  }
+
+  const parentCategory = metadata.categoriesById.get(transaction.categoryId);
+  if (!parentCategory?.name) {
+    fail("Cannot add a remainder split because the parent transaction category could not be resolved.");
+  }
+
+  return [
+    ...splitEntries,
+    {
+      notes: "",
+      categoryName: parentCategory.name,
+      amount: remainder,
+    },
+  ];
+}
+
 export function buildSplitBatchUpdate(transaction, fields) {
   const { subtransactions, ...parent } = fields;
   const existingChildIds = (transaction.subtransactions ?? []).map((split) => split.id);
@@ -235,6 +274,10 @@ export function addSplitCommand(program, deps) {
     .option("--transaction-id <id>")
     .option("--payee <payee>")
     .option("--txn-date <date>")
+    .option(
+      "--add-remainder-split",
+      "append an extra split for any remainder using the parent transaction category",
+    )
     .argument("<entries...>")
     .addHelpText(
       "after",
@@ -243,6 +286,10 @@ export function addSplitCommand(program, deps) {
         "Entry format:",
         "  Express entries as repeated triplets: <notes> <category> <amount>",
         '  Example: abctl split --transaction-id abc123 "Groceries run" "Food" -45.60 "Petrol" "Transport" -30',
+        "",
+        "Remainder handling:",
+        "  --add-remainder-split appends one extra split for the exact remainder amount",
+        "  using the parent transaction category.",
       ].join("\n"),
     )
     .action(async (entries, options) => {
@@ -252,6 +299,7 @@ export function addSplitCommand(program, deps) {
           transactionId: options.transactionId ?? null,
           payee: options.payee ?? null,
           txnDate: options.txnDate ?? null,
+          addRemainderSplit: options.addRemainderSplit ?? false,
           splitEntries: parseSplitEntries(entries),
         },
         deps,

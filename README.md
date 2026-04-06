@@ -46,6 +46,12 @@ Example:
 abctl split --transaction-id abc123 "Groceries run" "Food" -45.60 "Petrol" "Transport" -30
 ```
 
+If the split amounts do not add up, you can append the exact remainder as one extra split using the parent transaction category:
+
+```bash
+abctl split --add-remainder-split --transaction-id abc123 "Agent fees" "Expenses" -90
+```
+
 ## Make Transfer
 
 Preview uncategorized transfer candidates without writing:
@@ -77,6 +83,8 @@ abctl split --payee "Example Store" --txn-date 2026-04-05 "Groceries run" "Food"
 ```
 
 Each split entry is a repeated `<notes> <category> <amount>` triplet. Quote notes or category names when they contain spaces.
+
+Use `--add-remainder-split` to append one extra split for any remaining difference. The extra split uses the parent transaction category, so it only works when the original transaction is already categorized.
 
 ## St.George Import
 
