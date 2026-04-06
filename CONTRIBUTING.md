@@ -14,6 +14,7 @@ Run the disposable-budget smoke tests:
 npm run smoke:transfer
 npm run smoke:st-george
 npm run smoke:qif
+npm run smoke:split
 ```
 
 Run the real-write smoke variant:
@@ -23,3 +24,5 @@ npm run smoke:transfer:write
 npm run smoke:st-george:write
 npm run smoke:qif:write
 ```
+
+`smoke:split` writes to a disposable budget because `abctl split` has no dry-run mode.

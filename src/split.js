@@ -1,4 +1,5 @@
 import { InvalidArgumentError } from "commander";
+import { randomUUID } from "node:crypto";
 
 import { formatAmount, payeeName } from "./reporting.js";
 
@@ -150,14 +151,10 @@ export async function commandSplit(
       }
     }
 
-    await actualApi.updateTransaction(transaction.id, {
-      category: null,
-      subtransactions: args.splitEntries.map((split) => ({
-        notes: split.notes,
-        category: categoryNameToId.get(split.categoryName),
-        amount: split.amount,
-      })),
+    const fields = buildSplitUpdateFields(transaction, args.splitEntries, {
+      categoryNameToId,
     });
+    await applySplitUpdate(actualApi, transaction, fields);
     await actualApi.sync();
 
     for (const split of args.splitEntries) {
@@ -165,6 +162,70 @@ export async function commandSplit(
     }
     console.log("Done.");
   });
+}
+
+function buildSplitError(parentAmount, splitTotal) {
+  if (splitTotal === parentAmount) {
+    return null;
+  }
+  return {
+    type: "SplitTransactionError",
+    version: 1,
+    difference: parentAmount - splitTotal,
+  };
+}
+
+export function buildSplitUpdateFields(transaction, splitEntries, { categoryNameToId }) {
+  const subtransactions = splitEntries.map((split, index) => ({
+    id: randomUUID(),
+    account: transaction.accountId,
+    date: transaction.date,
+    payee: transaction.payeeId,
+    notes: split.notes,
+    category: categoryNameToId.get(split.categoryName),
+    amount: split.amount,
+    is_child: true,
+    parent_id: transaction.id,
+    error: null,
+    sort_order: index === 0 ? 0 : -index,
+  }));
+  const splitTotal = subtransactions.reduce((sum, split) => sum + split.amount, 0);
+
+  return {
+    account: transaction.accountId,
+    date: transaction.date,
+    payee: transaction.payeeId,
+    notes: transaction.notes,
+    amount: transaction.amount,
+    category: null,
+    is_parent: true,
+    error: buildSplitError(transaction.amount, splitTotal),
+    subtransactions,
+  };
+}
+
+export function buildSplitBatchUpdate(transaction, fields) {
+  const { subtransactions, ...parent } = fields;
+  const existingChildIds = (transaction.subtransactions ?? []).map((split) => split.id);
+
+  return {
+    added: subtransactions,
+    deleted: existingChildIds.map((id) => ({ id })),
+    runTransfers: false,
+    updated: [{ id: transaction.id, ...parent }],
+  };
+}
+
+async function applySplitUpdate(actualApi, transaction, fields) {
+  if (actualApi.internal?.send) {
+    await actualApi.internal.send(
+      "transactions-batch-update",
+      buildSplitBatchUpdate(transaction, fields),
+    );
+    return;
+  }
+
+  await actualApi.updateTransaction(transaction.id, fields);
 }
 
 export function addSplitCommand(program, deps) {

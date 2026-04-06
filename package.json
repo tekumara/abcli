@@ -6,6 +6,7 @@
     "test": "node --test",
     "smoke:transfer": "ABCTL_RUN_SMOKE_TEST=1 node --test test/transfer.smoke.test.js",
     "smoke:transfer:write": "ABCTL_RUN_SMOKE_TEST=1 ABCTL_SMOKE_WRITE=1 node --test test/transfer.smoke.test.js",
+    "smoke:split": "ABCTL_RUN_SMOKE_TEST=1 ABCTL_SMOKE_WRITE=1 node --test test/split.smoke.test.js",
     "smoke:uncategorized": "ABCTL_RUN_SMOKE_TEST=1 node --test test/uncategorized.smoke.test.js",
     "smoke:qif": "ABCTL_RUN_SMOKE_TEST=1 node --test test/qif.smoke.test.js",
     "smoke:qif:write": "ABCTL_RUN_SMOKE_TEST=1 ABCTL_SMOKE_WRITE=1 node --test test/qif.smoke.test.js",
