@@ -2,6 +2,20 @@
 
 CLI for working with [Actual Budget](actual.md).
 
+## Install
+
+Install globally with npm:
+
+```bash
+npm install -g abctl
+```
+
+Or run it without installing:
+
+```bash
+npx abctl --help
+```
+
 ## Usage
 
 ```bash

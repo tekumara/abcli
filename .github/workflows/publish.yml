@@ -1,0 +1,29 @@
+name: Publish to npm
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Update release (latest / prerelease) after publish
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm publish
+      - name: Mark GitHub release as latest (not prerelease)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          prerelease: false
+          make_latest: true

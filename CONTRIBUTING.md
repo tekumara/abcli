@@ -26,3 +26,10 @@ npm run smoke:qif:write
 ```
 
 `smoke:split` writes to a disposable budget because `abctl split` has no dry-run mode.
+
+## Release flow
+
+- Push conventional commits to `main` such as `feat: ...` and `fix: ...`.
+- `.github/workflows/release-please.yml` opens or updates the release PR.
+- Merging that PR creates the tag and GitHub Release.
+- The existing publish workflow then publishes the package to npm from the `release.published` event.
