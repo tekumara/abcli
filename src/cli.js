@@ -32,10 +32,11 @@ const execFile = promisify(execFileCallback);
 const SERVER_URL = process.env.ACTUAL_SERVER_URL ?? "http://localhost:5007";
 const DEFAULT_DATA_DIR = "/tmp/actual";
 const DATA_DIR = process.env.ACTUAL_DATA_DIR ?? DEFAULT_DATA_DIR;
-let actualApiModulePromise;
+let actualApiPromise;
+let actualApiInternal = null;
 
 async function getActualApi() {
-  if (!actualApiModulePromise) {
+  if (!actualApiPromise) {
     // needed because of https://github.com/actualbudget/actual/issues/7201
     if (!globalThis.navigator) {
       const platform =
@@ -50,10 +51,26 @@ async function getActualApi() {
       };
     }
 
-    actualApiModulePromise = import("@actual-app/api");
+    actualApiPromise = import("@actual-app/api").then((actualApiModule) => ({
+      ...actualApiModule,
+      async init(config = {}) {
+        actualApiInternal = await actualApiModule.init(config);
+        return actualApiInternal;
+      },
+      async shutdown() {
+        try {
+          await actualApiModule.shutdown();
+        } finally {
+          actualApiInternal = null;
+        }
+      },
+      get internal() {
+        return actualApiInternal;
+      },
+    }));
   }
 
-  return actualApiModulePromise;
+  return actualApiPromise;
 }
 
 function fail(message) {
