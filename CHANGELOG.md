@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2](https://github.com/tekumara/abctl/compare/v0.0.1...v0.0.2) (2026-04-18)
+
+
+### Bug Fixes
+
+* handle \"Database is out of sync with migrations\" and null internal send errors ([00b24ee](https://github.com/tekumara/abctl/commit/00b24ee3812baeeef47da2567d05ad5518507404))
+
 ## [0.0.1](https://github.com/tekumara/abctl/compare/v0.0.0...v0.0.1) (2026-04-15)
 
 
